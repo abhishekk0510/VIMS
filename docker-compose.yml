@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: vims_postgres
+    environment:
+      POSTGRES_DB: vimsdb
+      POSTGRES_USER: vims_user
+      POSTGRES_PASSWORD: Vims@Local123
+    ports:
+      - "5432:5432"
+    volumes:
+      - vims_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vims_user -d vimsdb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: vims_backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_USERNAME: vims_user
+      DB_PASSWORD: Vims@Local123
+      JWT_SECRET: vims-super-secret-jwt-key-change-in-production-256bits
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/vimsdb
+      MAIL_HOST: smtp.gmail.com
+      MAIL_PORT: "587"
+      MAIL_USERNAME: ""
+      MAIL_PASSWORD: ""
+      MAIL_FROM: noreply@vims.com
+      HF_TOKEN: ""
+      CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8080:8080"
+    volumes:
+      - vims_uploads:/app/uploads
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: vims_frontend
+    depends_on:
+      - backend
+    ports:
+      - "3000:80"
+    environment:
+      REACT_APP_API_URL: http://localhost:8080/api
+
+volumes:
+  vims_pgdata:
+  vims_uploads:
