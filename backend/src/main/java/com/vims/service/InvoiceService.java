@@ -35,6 +35,7 @@ public class InvoiceService {
     private final WorkflowService workflowService;
     private final NotificationService notificationService;
     private final AiService aiService;
+    private final OcrService ocrService;
     private final AuditLogService auditLogService;
 
     @Value("${file.upload.dir}")
@@ -72,7 +73,7 @@ public class InvoiceService {
         }
 
         invoiceRepository.save(invoice);
-        aiService.analyzeInvoiceAsync(invoice);
+        ocrService.extractAndAnalyzeAsync(invoice.getId());
         return toDto(invoice, false);
     }
 
@@ -107,7 +108,7 @@ public class InvoiceService {
                 "Invoice " + invoice.getInvoiceNumber() + " submitted for approval", invoice.getInvoiceNumber());
         WorkflowLevel firstLevel = workflowService.getLevel(workflow.getId(), 1)
                 .orElseThrow(() -> new BusinessException("Workflow has no levels configured"));
-        notificationService.notifyInvoiceSubmitted(invoice, firstLevel);
+        notificationService.notifyInvoiceSubmitted(invoice, vendor.getName(), firstLevel);
         return toDto(invoice, true);
     }
 
@@ -139,34 +140,37 @@ public class InvoiceService {
             if (invoice.getCurrentApprovalStep() < totalLevels) {
                 // Move to next level
                 invoice.setCurrentApprovalStep(invoice.getCurrentApprovalStep() + 1);
-                logHistory(invoice, actor, InvoiceStatus.PENDING_APPROVAL,
-                        "Approved at level " + currentLevel.getLevelOrder() + " (" + currentLevel.getLevelName() + "): " + req.getRemarks());
+                logHistory(invoice, actor, InvoiceStatus.PENDING_APPROVAL, req.getRemarks());
                 auditLogService.log("INVOICE_APPROVED_LEVEL", actor.getName(), actor.getRole().name(),
                         "Invoice " + invoice.getInvoiceNumber() + " approved at " + currentLevel.getLevelName(), invoice.getInvoiceNumber());
                 invoiceRepository.save(invoice);
-                // Notify next level approvers
+                // Force-load vendor before async notification (avoids LazyInitializationException)
+                String vendorName = invoice.getVendor().getName();
                 workflowService.getLevel(invoice.getWorkflowId(), invoice.getCurrentApprovalStep())
-                        .ifPresent(nextLevel -> notificationService.notifyLevelApproved(invoice, actor.getName(), currentLevel, nextLevel));
+                        .ifPresent(nextLevel -> notificationService.notifyLevelApproved(
+                                invoice, vendorName, actor.getName(), currentLevel, nextLevel));
             } else {
                 // Final level approved
                 invoice.setStatus(InvoiceStatus.APPROVED);
-                logHistory(invoice, actor, InvoiceStatus.APPROVED,
-                        "Final approval (" + currentLevel.getLevelName() + "): " + req.getRemarks());
+                logHistory(invoice, actor, InvoiceStatus.APPROVED, req.getRemarks());
                 auditLogService.log("INVOICE_FULLY_APPROVED", actor.getName(), actor.getRole().name(),
                         "Invoice " + invoice.getInvoiceNumber() + " fully approved by " + currentLevel.getLevelName(), invoice.getInvoiceNumber());
                 invoiceRepository.save(invoice);
-                notificationService.notifyFinalApproved(invoice, actor.getName(), currentLevel);
+                String vendorName = invoice.getVendor().getName();
+                String vendorEmail = invoice.getVendor().getEmail();
+                notificationService.notifyFinalApproved(invoice, vendorName, vendorEmail, actor.getName(), currentLevel);
             }
         } else {
             // Rejection — vendor must fix and resubmit
             invoice.setStatus(InvoiceStatus.REJECTED);
             invoice.setRejectionRemarks(req.getRemarks());
-            logHistory(invoice, actor, InvoiceStatus.REJECTED,
-                    "Rejected at level " + currentLevel.getLevelOrder() + " (" + currentLevel.getLevelName() + "): " + req.getRemarks());
+            logHistory(invoice, actor, InvoiceStatus.REJECTED, req.getRemarks());
             auditLogService.log("INVOICE_REJECTED", actor.getName(), actor.getRole().name(),
-                    "Invoice " + invoice.getInvoiceNumber() + " rejected at " + currentLevel.getLevelName() + ": " + req.getRemarks(), invoice.getInvoiceNumber());
+                    "Invoice " + invoice.getInvoiceNumber() + " rejected at " + currentLevel.getLevelName(), invoice.getInvoiceNumber());
             invoiceRepository.save(invoice);
-            notificationService.notifyRejected(invoice, actor.getName(), currentLevel, req.getRemarks());
+            String vendorName = invoice.getVendor().getName();
+            String vendorEmail = invoice.getVendor().getEmail();
+            notificationService.notifyRejected(invoice, vendorName, vendorEmail, actor.getName(), currentLevel, req.getRemarks());
         }
 
         return toDto(invoice, true);
@@ -189,7 +193,9 @@ public class InvoiceService {
         logHistory(invoice, actor, InvoiceStatus.PAID, remarks);
         auditLogService.log("INVOICE_PAID", actor.getName(), actor.getRole().name(),
                 "Invoice " + invoice.getInvoiceNumber() + " marked as paid", invoice.getInvoiceNumber());
-        notificationService.notifyPaymentDone(invoice, actor.getName());
+        String vendorName = invoice.getVendor().getName();
+        String vendorEmail = invoice.getVendor().getEmail();
+        notificationService.notifyPaymentDone(invoice, vendorName, vendorEmail, actor.getName());
         return toDto(invoice, true);
     }
 
@@ -425,6 +431,7 @@ public class InvoiceService {
                 .currentStepName(currentStepName)
                 .currentStepRole(currentStepRole)
                 .workflowName(workflowName)
+                .ocrText(i.getOcrText())
                 .aiAnalysis(i.getAiAnalysis()).aiAnomalyFlag(i.getAiAnomalyFlag())
                 .aiRiskScore(i.getAiRiskScore())
                 .createdAt(i.getCreatedAt()).updatedAt(i.getUpdatedAt())

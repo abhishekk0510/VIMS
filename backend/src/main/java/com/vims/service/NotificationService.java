@@ -35,93 +35,118 @@ public class NotificationService {
 
     /** Called when vendor submits invoice — notifies Step-1 approvers */
     @Async
-    public void notifyInvoiceSubmitted(Invoice invoice, WorkflowLevel firstLevel) {
-        String subject = "🔔 Action Required: New Invoice Submitted — " + invoice.getInvoiceNumber();
-        String body = buildApprovalRequestEmail(
-                firstLevel.getLevelName(),
-                invoice,
-                "A new invoice has been submitted and is awaiting your review at the <strong>" + firstLevel.getLevelName() + "</strong> stage.",
-                "This invoice was submitted by the vendor and has entered the approval workflow. Please review it at your earliest convenience.",
-                null
-        );
-        sendToRole(firstLevel.getApproverRole(), invoice.getTenantId(), subject, body);
+    public void notifyInvoiceSubmitted(Invoice invoice, String vendorName, WorkflowLevel firstLevel) {
+        try {
+            String subject = "🔔 Action Required: New Invoice Submitted — " + invoice.getInvoiceNumber();
+            String body = buildApprovalRequestEmail(
+                    firstLevel.getLevelName(),
+                    invoice,
+                    vendorName,
+                    "A new invoice has been submitted and is awaiting your review at the <strong>" + firstLevel.getLevelName() + "</strong> stage.",
+                    "This invoice was submitted by the vendor and has entered the approval workflow. Please review it at your earliest convenience.",
+                    null
+            );
+            sendToRole(firstLevel.getApproverRole(), invoice.getTenantId(), subject, body);
+        } catch (Exception e) {
+            log.warn("Failed to send submission notification for {}: {}", invoice.getInvoiceNumber(), e.getMessage());
+        }
     }
 
     /** Called when a level approves but it's NOT the final level — notifies next level approvers */
     @Async
-    public void notifyLevelApproved(Invoice invoice, String approverName, WorkflowLevel approvedLevel, WorkflowLevel nextLevel) {
-        String subject = "✅ Action Required: Invoice Approved at " + approvedLevel.getLevelName() + " — " + invoice.getInvoiceNumber();
-        String body = buildApprovalRequestEmail(
-                nextLevel.getLevelName(),
-                invoice,
-                "Invoice <strong>" + invoice.getInvoiceNumber() + "</strong> has been approved at the <strong>"
-                        + approvedLevel.getLevelName() + "</strong> stage by <strong>" + approverName + "</strong>.",
-                "The invoice is now pending your review at the <strong>" + nextLevel.getLevelName()
-                        + "</strong> stage. Please log in to VIMS and take the appropriate action.",
-                null
-        );
-        sendToRole(nextLevel.getApproverRole(), invoice.getTenantId(), subject, body);
+    public void notifyLevelApproved(Invoice invoice, String vendorName, String approverName, WorkflowLevel approvedLevel, WorkflowLevel nextLevel) {
+        try {
+            String subject = "✅ Action Required: Invoice Approved at " + approvedLevel.getLevelName() + " — " + invoice.getInvoiceNumber();
+            String body = buildApprovalRequestEmail(
+                    nextLevel.getLevelName(),
+                    invoice,
+                    vendorName,
+                    "Invoice <strong>" + invoice.getInvoiceNumber() + "</strong> has been approved at the <strong>"
+                            + approvedLevel.getLevelName() + "</strong> stage by <strong>" + approverName + "</strong>.",
+                    "The invoice is now pending your review at the <strong>" + nextLevel.getLevelName()
+                            + "</strong> stage. Please log in to VIMS and take the appropriate action.",
+                    null
+            );
+            sendToRole(nextLevel.getApproverRole(), invoice.getTenantId(), subject, body);
+        } catch (Exception e) {
+            log.warn("Failed to send level-approved notification for {}: {}", invoice.getInvoiceNumber(), e.getMessage());
+        }
     }
 
     /** Called on final level approval — notifies vendor */
     @Async
-    public void notifyFinalApproved(Invoice invoice, String approverName, WorkflowLevel lastLevel) {
-        String subject = "🎉 Your Invoice Has Been Fully Approved — " + invoice.getInvoiceNumber();
-        String body = buildStatusUpdateEmail(
-                invoice.getVendor().getName(),
-                invoice,
-                "approved",
-                "#10b981",
-                "✅ Invoice Approved",
-                "Congratulations! Your invoice <strong>" + invoice.getInvoiceNumber()
-                        + "</strong> has successfully cleared all approval stages and has been <strong>fully approved</strong>.",
-                "Final approval was given by <strong>" + approverName + "</strong> at the <strong>" + lastLevel.getLevelName()
-                        + "</strong> stage. Your payment will be processed shortly.",
-                null
-        );
-        sendToEmail(invoice.getVendor().getEmail(), subject, body);
+    public void notifyFinalApproved(Invoice invoice, String vendorName, String vendorEmail, String approverName, WorkflowLevel lastLevel) {
+        try {
+            String subject = "🎉 Your Invoice Has Been Fully Approved — " + invoice.getInvoiceNumber();
+            String body = buildStatusUpdateEmail(
+                    vendorName,
+                    invoice,
+                    vendorName,
+                    "approved",
+                    "#10b981",
+                    "✅ Invoice Approved",
+                    "Congratulations! Your invoice <strong>" + invoice.getInvoiceNumber()
+                            + "</strong> has successfully cleared all approval stages and has been <strong>fully approved</strong>.",
+                    "Final approval was given by <strong>" + approverName + "</strong> at the <strong>" + lastLevel.getLevelName()
+                            + "</strong> stage. Your payment will be processed shortly.",
+                    null
+            );
+            sendToEmail(vendorEmail, subject, body);
+        } catch (Exception e) {
+            log.warn("Failed to send final-approved notification for {}: {}", invoice.getInvoiceNumber(), e.getMessage());
+        }
     }
 
     /** Called when an approver rejects — notifies vendor with rejection details */
     @Async
-    public void notifyRejected(Invoice invoice, String rejectedByName, WorkflowLevel rejectedAtLevel, String remarks) {
-        String subject = "❌ Invoice Rejected — Action Required: " + invoice.getInvoiceNumber();
-        String body = buildStatusUpdateEmail(
-                invoice.getVendor().getName(),
-                invoice,
-                "rejected",
-                "#ef4444",
-                "❌ Invoice Rejected",
-                "Your invoice <strong>" + invoice.getInvoiceNumber() + "</strong> has been <strong>rejected</strong> at the <strong>"
-                        + rejectedAtLevel.getLevelName() + "</strong> stage.",
-                "Please review the rejection reason below, make the necessary corrections, and resubmit the invoice through the VIMS portal.",
-                remarks
-        );
-        sendToEmail(invoice.getVendor().getEmail(), subject, body);
+    public void notifyRejected(Invoice invoice, String vendorName, String vendorEmail, String rejectedByName, WorkflowLevel rejectedAtLevel, String remarks) {
+        try {
+            String subject = "❌ Invoice Rejected — Action Required: " + invoice.getInvoiceNumber();
+            String body = buildStatusUpdateEmail(
+                    vendorName,
+                    invoice,
+                    vendorName,
+                    "rejected",
+                    "#ef4444",
+                    "❌ Invoice Rejected",
+                    "Your invoice <strong>" + invoice.getInvoiceNumber() + "</strong> has been <strong>rejected</strong> at the <strong>"
+                            + rejectedAtLevel.getLevelName() + "</strong> stage.",
+                    "Please review the rejection reason below, make the necessary corrections, and resubmit the invoice through the VIMS portal.",
+                    remarks
+            );
+            sendToEmail(vendorEmail, subject, body);
+        } catch (Exception e) {
+            log.warn("Failed to send rejection notification for {}: {}", invoice.getInvoiceNumber(), e.getMessage());
+        }
     }
 
     /** Called when finance marks invoice as paid */
     @Async
-    public void notifyPaymentDone(Invoice invoice, String processedBy) {
-        String subject = "💰 Payment Processed for Invoice " + invoice.getInvoiceNumber();
-        String body = buildStatusUpdateEmail(
-                invoice.getVendor().getName(),
-                invoice,
-                "paid",
-                "#8b5cf6",
-                "💰 Payment Processed",
-                "Great news! Payment has been successfully processed for your invoice <strong>" + invoice.getInvoiceNumber() + "</strong>.",
-                "The payment was processed by <strong>" + processedBy + "</strong>. Please allow 2–3 business days for the funds to reflect in your bank account as per standard settlement timelines.",
-                null
-        );
-        sendToEmail(invoice.getVendor().getEmail(), subject, body);
+    public void notifyPaymentDone(Invoice invoice, String vendorName, String vendorEmail, String processedBy) {
+        try {
+            String subject = "💰 Payment Processed for Invoice " + invoice.getInvoiceNumber();
+            String body = buildStatusUpdateEmail(
+                    vendorName,
+                    invoice,
+                    vendorName,
+                    "paid",
+                    "#8b5cf6",
+                    "💰 Payment Processed",
+                    "Great news! Payment has been successfully processed for your invoice <strong>" + invoice.getInvoiceNumber() + "</strong>.",
+                    "The payment was processed by <strong>" + processedBy + "</strong>. Please allow 2–3 business days for the funds to reflect in your bank account as per standard settlement timelines.",
+                    null
+            );
+            sendToEmail(vendorEmail, subject, body);
+        } catch (Exception e) {
+            log.warn("Failed to send payment notification for {}: {}", invoice.getInvoiceNumber(), e.getMessage());
+        }
     }
 
     // ─── HTML template builders ──────────────────────────────────────────────────
 
     private String buildApprovalRequestEmail(String recipientRole, Invoice invoice,
-                                              String headlineHtml, String bodyTextHtml,
-                                              String remarks) {
+                                              String vendorName, String headlineHtml,
+                                              String bodyTextHtml, String remarks) {
         String amt = "₹" + String.format("%,.2f", invoice.getAmount() != null ? invoice.getAmount() : BigDecimal.ZERO);
         String date = invoice.getInvoiceDate() != null ? invoice.getInvoiceDate().format(DATE_FMT) : "—";
         String invoiceUrl = APP_URL + "/invoices/" + invoice.getId();
@@ -132,7 +157,7 @@ public class NotificationService {
                 + "<p style='margin:6px 0 0;font-size:15px;color:#78350f'>" + headlineHtml + "</p>"
                 + "</div>"
                 + "<p style='color:#374151;font-size:15px;line-height:1.7;margin:0 0 20px'>" + bodyTextHtml + "</p>"
-                + invoiceDetailsTable(invoice.getInvoiceNumber(), invoice.getVendor().getName(), amt, date, invoice.getClientName())
+                + invoiceDetailsTable(invoice.getInvoiceNumber(), vendorName, amt, date, invoice.getClientName())
                 + (remarks != null ? remarksBox(remarks, "#fef3c7", "#92400e") : "")
                 + "<div style='text-align:center;margin:28px 0'>"
                 + "<a href='" + invoiceUrl + "' style='background:#3b82f6;color:#fff;text-decoration:none;padding:13px 32px;border-radius:8px;font-weight:600;font-size:15px;display:inline-block'>Review Invoice →</a>"
@@ -141,9 +166,10 @@ public class NotificationService {
     }
 
     private String buildStatusUpdateEmail(String recipientName, Invoice invoice,
-                                           String statusLabel, String accentColor,
-                                           String headline, String headlineBodyHtml,
-                                           String detailHtml, String remarks) {
+                                           String vendorName, String statusLabel,
+                                           String accentColor, String headline,
+                                           String headlineBodyHtml, String detailHtml,
+                                           String remarks) {
         String amt = "₹" + String.format("%,.2f", invoice.getAmount() != null ? invoice.getAmount() : BigDecimal.ZERO);
         String date = invoice.getInvoiceDate() != null ? invoice.getInvoiceDate().format(DATE_FMT) : "—";
         String invoiceUrl = APP_URL + "/invoices/" + invoice.getId();
@@ -157,7 +183,7 @@ public class NotificationService {
                 + "<p style='color:#374151;font-size:15px;line-height:1.7;margin:0 0 16px'>Dear <strong>" + recipientName + "</strong>,</p>"
                 + "<p style='color:#374151;font-size:15px;line-height:1.7;margin:0 0 20px'>" + headlineBodyHtml + "</p>"
                 + "<p style='color:#6b7280;font-size:14px;line-height:1.7;margin:0 0 20px'>" + detailHtml + "</p>"
-                + invoiceDetailsTable(invoice.getInvoiceNumber(), invoice.getVendor().getName(), amt, date, invoice.getClientName())
+                + invoiceDetailsTable(invoice.getInvoiceNumber(), vendorName, amt, date, invoice.getClientName())
                 + (remarks != null && !remarks.isBlank() ? remarksBox(remarks, remarksBgColor, remarksTextColor) : "")
                 + "<div style='text-align:center;margin:28px 0'>"
                 + "<a href='" + invoiceUrl + "' style='background:#0f172a;color:#fff;text-decoration:none;padding:13px 32px;border-radius:8px;font-weight:600;font-size:15px;display:inline-block'>View Invoice in VIMS →</a>"

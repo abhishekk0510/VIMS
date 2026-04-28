@@ -66,6 +66,10 @@ public class Invoice {
     @Column(name = "current_approval_step")
     private Integer currentApprovalStep;
 
+    // OCR extracted text
+    @Column(columnDefinition = "TEXT")
+    private String ocrText;
+
     // AI analysis fields
     @Column(columnDefinition = "TEXT")
     private String aiAnalysis;

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { BuildingOffice2Icon, EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
+import { EyeIcon, EyeSlashIcon } from '@heroicons/react/24/outline';
 
 /* ─────────────────────────────────────────────────────────────────
    Natsu Dragneel  –  suit & coat, BLACK hair
@@ -362,15 +362,22 @@ export default function LoginPage() {
           {/* Login card */}
           <div style={{ flex: '0 0 400px' }}>
             <div style={{ textAlign: 'center', marginBottom: '1.8rem' }}>
-              <div style={{
-                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-                width: '64px', height: '64px', borderRadius: '16px',
-                background: 'rgba(255,255,255,.12)', backdropFilter: 'blur(8px)',
-                border: '1px solid rgba(255,255,255,.2)', marginBottom: '.8rem',
-              }}>
-                <BuildingOffice2Icon style={{ height: '36px', width: '36px', color: 'white' }} />
+
+              {/* 3SC Brand Logo */}
+              <div style={{ marginBottom: '1.2rem' }}>
+                <div style={{
+                  display: 'inline-block', background: 'white', borderRadius: '12px',
+                  padding: '10px 18px', boxShadow: '0 4px 20px rgba(0,0,0,0.25)',
+                }}>
+                  <img
+                    src="/3sc-logo.jpeg"
+                    alt="3SC Supply Chain Solutions"
+                    style={{ height: '72px', width: 'auto', display: 'block' }}
+                  />
+                </div>
               </div>
-              <h1 style={{ fontSize: '2rem', fontWeight: 800, color: 'white', margin: 0 }}>VIMS</h1>
+
+<h1 style={{ fontSize: '2rem', fontWeight: 800, color: 'white', margin: 0 }}>VIMS</h1>
               <p style={{ color: '#a8c8f0', marginTop: '4px', fontSize: '.88rem' }}>
                 Vendor Invoice Management System
               </p>
@@ -429,14 +436,6 @@ export default function LoginPage() {
                 </button>
               </form>
 
-              <div style={{
-                marginTop: '1.4rem', padding: '.85rem 1rem',
-                background: '#f7f8fc', borderRadius: '10px',
-                fontSize: '.75rem', color: '#718096',
-              }}>
-                <p style={{ fontWeight: 600, marginBottom: '2px' }}>Demo credentials:</p>
-                <p>Admin: admin@vims.com / Admin@123</p>
-              </div>
             </div>
           </div>
 

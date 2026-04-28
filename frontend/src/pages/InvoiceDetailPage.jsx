@@ -115,6 +115,109 @@ function ApprovalStageTracker({ invoice }) {
   );
 }
 
+// Parse key fields from raw OCR text for display
+function parseOcrFields(text) {
+  const fields = [];
+  if (!text) return fields;
+
+  const amountMatch = text.match(/(?:total|amount|grand\s+total|net\s+amount)[^\d]*([₹Rs.INR]*\s*[\d,]+(?:\.\d{1,2})?)/i);
+  if (amountMatch) fields.push({ label: 'Detected Amount', value: amountMatch[1].trim() });
+
+  const invNoMatch = text.match(/(?:invoice\s*(?:no|number|#)?)[:\s#]*([A-Z0-9/-]{4,20})/i);
+  if (invNoMatch) fields.push({ label: 'Invoice No.', value: invNoMatch[1].trim() });
+
+  const dateMatch = text.match(/(?:invoice\s*date|date)[:\s]*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4}|\d{4}[\/\-]\d{2}[\/\-]\d{2})/i);
+  if (dateMatch) fields.push({ label: 'Date', value: dateMatch[1].trim() });
+
+  const vendorMatch = text.match(/(?:from|vendor|billed?\s*by|seller)[:\s]*([A-Za-z][A-Za-z0-9 .,-]{2,40})/i);
+  if (vendorMatch) fields.push({ label: 'Vendor / Biller', value: vendorMatch[1].trim() });
+
+  const gstMatch = text.match(/(?:GST(?:IN)?|GSTIN)[:\s#]*([0-9A-Z]{15})/i);
+  if (gstMatch) fields.push({ label: 'GSTIN', value: gstMatch[1].trim() });
+
+  return fields;
+}
+
+function OcrTab({ invoice }) {
+  const hasOcr = invoice.ocrText && invoice.ocrText.trim().length > 0;
+  const isProcessing = !invoice.ocrText && invoice.fileName;
+  const parsed = hasOcr ? parseOcrFields(invoice.ocrText) : [];
+
+  // Cross-check: detect amount mismatch between entered amount and OCR
+  let amountWarning = null;
+  if (hasOcr) {
+    const amountField = parsed.find(f => f.label === 'Detected Amount');
+    if (amountField) {
+      const ocrNum = parseFloat(amountField.value.replace(/[₹Rs.INR,\s]/gi, ''));
+      const enteredNum = Number(invoice.amount);
+      if (!isNaN(ocrNum) && Math.abs(ocrNum - enteredNum) / Math.max(enteredNum, 1) > 0.05) {
+        amountWarning = { entered: enteredNum, ocr: ocrNum };
+      }
+    }
+  }
+
+  if (isProcessing) return (
+    <div className="card text-center py-10">
+      <div className="animate-spin h-8 w-8 rounded-full border-b-2 border-blue-500 mx-auto mb-3"/>
+      <p className="text-sm text-gray-500">OCR extraction in progress...</p>
+      <p className="text-xs text-gray-400 mt-1">This usually takes a few seconds after upload.</p>
+    </div>
+  );
+
+  if (!hasOcr) return (
+    <div className="card text-center py-10 text-gray-400 text-sm">
+      <span className="text-3xl mb-3 block">📄</span>
+      No OCR data available. Upload a PDF or image to extract text.
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      {/* Parsed Fields */}
+      {parsed.length > 0 && (
+        <div className="card">
+          <h2 className="text-base font-semibold text-gray-900 mb-3">Extracted Fields</h2>
+          <dl className="grid grid-cols-2 gap-3">
+            {parsed.map(({ label, value }) => (
+              <div key={label}>
+                <dt className="text-gray-400 text-xs font-medium uppercase tracking-wide">{label}</dt>
+                <dd className="font-semibold text-gray-900 mt-0.5 text-sm">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+
+      {/* Amount mismatch warning */}
+      {amountWarning && (
+        <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+          <span className="text-lg leading-none">⚠️</span>
+          <div>
+            <p className="font-semibold">Amount mismatch detected</p>
+            <p className="text-xs mt-0.5">
+              Entered: <strong>₹{amountWarning.entered.toLocaleString('en-IN')}</strong> &nbsp;|&nbsp;
+              OCR detected: <strong>₹{amountWarning.ocr.toLocaleString('en-IN')}</strong>
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Raw OCR text */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-base font-semibold text-gray-900">Raw Extracted Text</h2>
+          <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+            {invoice.ocrText.length} chars
+          </span>
+        </div>
+        <pre className="text-xs text-gray-600 bg-gray-50 border rounded-lg p-3 overflow-auto max-h-64 whitespace-pre-wrap font-mono leading-relaxed">
+          {invoice.ocrText}
+        </pre>
+      </div>
+    </div>
+  );
+}
+
 export default function InvoiceDetailPage() {
   const { id } = useParams();
   const { user } = useAuth();
@@ -125,6 +228,7 @@ export default function InvoiceDetailPage() {
   const [remarks, setRemarks] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [activeTab, setActiveTab] = useState('details');
 
   const fetchInvoice = () => {
     invoiceService.getById(id)
@@ -185,8 +289,10 @@ export default function InvoiceDetailPage() {
   if (!invoice) return <div className="text-center mt-20 text-gray-400">Invoice not found</div>;
 
   const canSubmit  = (user?.role === 'VENDOR' || user?.role === 'ADMIN') && (invoice.status === 'DRAFT' || invoice.status === 'REJECTED');
-  const canApprove = invoice.status === 'PENDING_APPROVAL' &&
-                     (user?.role === invoice.currentStepRole || user?.role === 'ADMIN');
+  const canApprove = invoice.status === 'PENDING_APPROVAL' && (
+    user?.role === 'ADMIN' ||
+    (invoice.currentStepRole != null && String(user?.role) === String(invoice.currentStepRole))
+  );
   const canMarkPaid = (user?.role === 'FINANCE' || user?.role === 'CFO' || user?.role === 'ADMIN') && invoice.status === 'APPROVED';
 
   return (
@@ -211,67 +317,97 @@ export default function InvoiceDetailPage() {
       <ApprovalStageTracker invoice={invoice}/>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {/* Left – Invoice info + history */}
+        {/* Left – Tabbed: Details | OCR Extract | Timeline */}
         <div className="lg:col-span-2 space-y-5">
-          <div className="card">
-            <h2 className="text-base font-semibold text-gray-900 mb-4">Invoice Details</h2>
-            <dl className="grid grid-cols-2 gap-4 text-sm">
-              {[
-                ['Vendor', invoice.vendor?.name],
-                ['Invoice Date', invoice.invoiceDate ? format(new Date(invoice.invoiceDate), 'dd MMM yyyy') : '—'],
-                ['Amount', `₹${Number(invoice.amount).toLocaleString('en-IN')}`],
-                ['Client', invoice.clientName || '—'],
-              ].map(([k, v]) => (
-                <div key={k}>
-                  <dt className="text-gray-400 text-xs font-medium uppercase tracking-wide">{k}</dt>
-                  <dd className="font-semibold text-gray-900 mt-1">{v}</dd>
-                </div>
-              ))}
-              {invoice.description && (
-                <div className="col-span-2">
-                  <dt className="text-gray-400 text-xs font-medium uppercase tracking-wide">Description</dt>
-                  <dd className="text-gray-700 mt-1">{invoice.description}</dd>
-                </div>
-              )}
-              {invoice.rejectionRemarks && (
-                <div className="col-span-2">
-                  <dt className="text-red-500 text-xs font-bold uppercase tracking-wide">Rejection Remarks</dt>
-                  <dd className="text-red-700 mt-1 p-2.5 bg-red-50 rounded-lg border border-red-100">{invoice.rejectionRemarks}</dd>
-                </div>
-              )}
-            </dl>
+          {/* Tab buttons */}
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1 text-sm font-medium">
+            {[
+              { key: 'details', label: 'Details' },
+              { key: 'ocr', label: `OCR Extract${invoice.ocrText ? '' : ''}` },
+              { key: 'timeline', label: `Timeline${invoice.history?.length ? ` (${invoice.history.length})` : ''}` },
+            ].map(tab => (
+              <button key={tab.key} onClick={() => setActiveTab(tab.key)}
+                className={`flex-1 py-1.5 px-3 rounded-lg transition-all ${
+                  activeTab === tab.key
+                    ? 'bg-white text-blue-700 shadow-sm font-semibold'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}>
+                {tab.label}
+              </button>
+            ))}
           </div>
 
-          {/* Approval timeline */}
-          {invoice.history && invoice.history.length > 0 && (
+          {/* Details tab */}
+          {activeTab === 'details' && (
             <div className="card">
-              <h2 className="text-base font-semibold text-gray-900 mb-4">Approval Timeline</h2>
-              <div className="space-y-4">
-                {invoice.history.map((h, i) => (
-                  <div key={h.id} className="flex gap-3">
-                    <div className="flex flex-col items-center">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${
-                        h.statusAfter === 'APPROVED' || h.statusAfter === 'PAID' ? 'bg-emerald-500' :
-                        h.statusAfter === 'REJECTED' ? 'bg-red-500' : 'bg-blue-500'
-                      }`}>{i + 1}</div>
-                      {i < invoice.history.length - 1 && <div className="w-0.5 flex-1 bg-gray-200 mt-1"/>}
-                    </div>
-                    <div className="pb-4 flex-1">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-semibold text-gray-900">{h.actionBy?.name}</span>
-                        <span className="text-xs text-gray-400">{h.createdAt ? format(new Date(h.createdAt), 'dd MMM, HH:mm') : ''}</span>
-                      </div>
-                      <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-2">
-                        <span>{h.role}</span>
-                        <span>→</span>
-                        <StatusBadge status={h.statusAfter}/>
-                      </div>
-                      {h.remarks && <p className="text-xs text-gray-600 mt-1 italic bg-gray-50 px-2 py-1 rounded">"{h.remarks}"</p>}
-                    </div>
+              <h2 className="text-base font-semibold text-gray-900 mb-4">Invoice Details</h2>
+              <dl className="grid grid-cols-2 gap-4 text-sm">
+                {[
+                  ['Vendor', invoice.vendor?.name],
+                  ['Invoice Date', invoice.invoiceDate ? format(new Date(invoice.invoiceDate), 'dd MMM yyyy') : '—'],
+                  ['Amount', `₹${Number(invoice.amount).toLocaleString('en-IN')}`],
+                  ['Client', invoice.clientName || '—'],
+                ].map(([k, v]) => (
+                  <div key={k}>
+                    <dt className="text-gray-400 text-xs font-medium uppercase tracking-wide">{k}</dt>
+                    <dd className="font-semibold text-gray-900 mt-1">{v}</dd>
                   </div>
                 ))}
-              </div>
+                {invoice.description && (
+                  <div className="col-span-2">
+                    <dt className="text-gray-400 text-xs font-medium uppercase tracking-wide">Description</dt>
+                    <dd className="text-gray-700 mt-1">{invoice.description}</dd>
+                  </div>
+                )}
+                {invoice.rejectionRemarks && (
+                  <div className="col-span-2">
+                    <dt className="text-red-500 text-xs font-bold uppercase tracking-wide">Rejection Remarks</dt>
+                    <dd className="text-red-700 mt-1 p-2.5 bg-red-50 rounded-lg border border-red-100">{invoice.rejectionRemarks}</dd>
+                  </div>
+                )}
+              </dl>
             </div>
+          )}
+
+          {/* OCR Extract tab */}
+          {activeTab === 'ocr' && (
+            <OcrTab invoice={invoice} />
+          )}
+
+          {/* Timeline tab */}
+          {activeTab === 'timeline' && (
+            invoice.history && invoice.history.length > 0 ? (
+              <div className="card">
+                <h2 className="text-base font-semibold text-gray-900 mb-4">Approval Timeline</h2>
+                <div className="space-y-4">
+                  {invoice.history.map((h, i) => (
+                    <div key={h.id} className="flex gap-3">
+                      <div className="flex flex-col items-center">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${
+                          h.statusAfter === 'APPROVED' || h.statusAfter === 'PAID' ? 'bg-emerald-500' :
+                          h.statusAfter === 'REJECTED' ? 'bg-red-500' : 'bg-blue-500'
+                        }`}>{i + 1}</div>
+                        {i < invoice.history.length - 1 && <div className="w-0.5 flex-1 bg-gray-200 mt-1"/>}
+                      </div>
+                      <div className="pb-4 flex-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-gray-900">{h.actionBy?.name}</span>
+                          <span className="text-xs text-gray-400">{h.createdAt ? format(new Date(h.createdAt), 'dd MMM, HH:mm') : ''}</span>
+                        </div>
+                        <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-2">
+                          <span>{h.role}</span>
+                          <span>→</span>
+                          <StatusBadge status={h.statusAfter}/>
+                        </div>
+                        {h.remarks && <p className="text-xs text-gray-600 mt-1 italic bg-gray-50 px-2 py-1 rounded">"{h.remarks}"</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="card text-center py-8 text-gray-400 text-sm">No approval history yet.</div>
+            )
           )}
         </div>
 
@@ -329,7 +465,14 @@ export default function InvoiceDetailPage() {
                 </button>
               )}
               {!canSubmit && !canApprove && !canMarkPaid && (
-                <p className="text-sm text-gray-400 text-center py-2">No actions available</p>
+                <div className="text-center py-2">
+                  <p className="text-sm text-gray-400">No actions available</p>
+                  {invoice.status === 'PENDING_APPROVAL' && invoice.currentStepRole && user?.role !== invoice.currentStepRole && user?.role !== 'ADMIN' && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      Awaiting <strong>{invoice.currentStepRole}</strong> approval
+                    </p>
+                  )}
+                </div>
               )}
             </div>
           </div>

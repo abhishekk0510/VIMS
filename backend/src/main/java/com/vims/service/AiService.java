@@ -13,6 +13,8 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.*;
 import java.util.UUID;
 
@@ -82,13 +84,17 @@ public class AiService {
      * Uses facebook/bart-large-mnli model.
      */
     private String callHuggingFaceClassifier(Invoice invoice) throws Exception {
+        String ocrSnippet = (invoice.getOcrText() != null && !invoice.getOcrText().isBlank())
+            ? " | OCR text excerpt: " + invoice.getOcrText().substring(0, Math.min(300, invoice.getOcrText().length()))
+            : "";
         String text = String.format(
-            "Invoice %s from vendor %s, amount: %.2f, client: %s, date: %s",
+            "Invoice %s from vendor %s, amount: %.2f, client: %s, date: %s%s",
             invoice.getInvoiceNumber(),
             invoice.getVendor().getName(),
             invoice.getAmount(),
             invoice.getClientName(),
-            invoice.getInvoiceDate()
+            invoice.getInvoiceDate(),
+            ocrSnippet
         );
 
         Map<String, Object> payload = new HashMap<>();
@@ -166,6 +172,22 @@ public class AiService {
             findings.add("✅ Supporting document attached");
         }
 
+        // OCR amount cross-check
+        if (invoice.getOcrText() != null && !invoice.getOcrText().isBlank()) {
+            BigDecimal ocrAmount = extractAmountFromOcr(invoice.getOcrText());
+            if (ocrAmount != null) {
+                BigDecimal pct = invoice.getAmount().subtract(ocrAmount).abs()
+                        .multiply(BigDecimal.valueOf(100))
+                        .divide(ocrAmount.max(BigDecimal.ONE), 2, java.math.RoundingMode.HALF_UP);
+                if (pct.compareTo(BigDecimal.valueOf(5)) > 0) {
+                    findings.add(String.format("⚠️ Amount mismatch: entered ₹%.2f vs OCR-detected ₹%.2f (%.1f%% diff)",
+                            invoice.getAmount(), ocrAmount, pct));
+                } else {
+                    findings.add("✅ Amount matches OCR extracted value");
+                }
+            }
+        }
+
         return "AI Analysis (Rule-Based): " + String.join(" | ", findings);
     }
 
@@ -195,6 +217,23 @@ public class AiService {
         else if (amount.remainder(BigDecimal.valueOf(1000)).compareTo(BigDecimal.ZERO) == 0) score += 10;
 
         return BigDecimal.valueOf(Math.min(score, 100));
+    }
+
+    private BigDecimal extractAmountFromOcr(String text) {
+        // Match patterns like: Total: 1,23,456.78 / Rs. 50000 / ₹1,000.00 / INR 2500
+        Pattern p = Pattern.compile(
+            "(?i)(?:total|amount|grand\\s+total|net\\s+amount|invoice\\s+amount)?\\s*[₹Rs\\.INR]*\\s*([0-9]{1,3}(?:[,.]?[0-9]{3})*(?:\\.[0-9]{1,2})?)"
+        );
+        Matcher m = p.matcher(text);
+        BigDecimal largest = null;
+        while (m.find()) {
+            try {
+                String raw = m.group(1).replace(",", "");
+                BigDecimal val = new BigDecimal(raw);
+                if (largest == null || val.compareTo(largest) > 0) largest = val;
+            } catch (NumberFormatException ignored) {}
+        }
+        return largest;
     }
 
     private String getRecommendation(String label) {

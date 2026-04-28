@@ -98,7 +98,8 @@ public class Responses {
         private String currentStepName;
         private Role currentStepRole;
         private String workflowName;
-        // AI fields
+        // OCR + AI fields
+        private String ocrText;
         private String aiAnalysis;
         private Boolean aiAnomalyFlag;
         private BigDecimal aiRiskScore;

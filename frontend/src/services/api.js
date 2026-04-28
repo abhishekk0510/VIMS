@@ -30,7 +30,7 @@ api.interceptors.response.use(
       try {
         const rt = localStorage.getItem('vims_refresh_token');
         if (!rt) throw new Error('No refresh token');
-        const r = await axios.post('/api/auth/refresh', { refreshToken: rt });
+        const r = await api.post('/auth/refresh', { refreshToken: rt });
         const newToken = r.data.data.accessToken;
         localStorage.setItem('vims_access_token', newToken);
         queue.forEach(p => p.res(newToken));
