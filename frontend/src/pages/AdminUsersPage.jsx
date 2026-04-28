@@ -7,6 +7,12 @@ import { PlusIcon, LockOpenIcon } from '@heroicons/react/24/outline';
 const ROLES = ['VENDOR','OPERATIONS','FINANCE','CLIENT','ADMIN','DEPT_HEAD','CFO','SUPER_ADMIN'];
 const VENDOR_TYPES = ['General', 'MSME', 'Government', 'Startup', 'Other'];
 
+const PHONE_RE   = /^\+?[1-9]\d{6,14}$/;
+const GSTIN_RE   = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
+const PAN_RE     = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
+const IFSC_RE    = /^[A-Z]{4}0[A-Z0-9]{6}$/;
+const PASSWORD_RE = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+
 const ROLE_BADGE = {
   ADMIN:       'bg-purple-100 text-purple-700',
   VENDOR:      'bg-blue-100 text-blue-700',
@@ -37,11 +43,12 @@ function Modal({ onClose, children }) {
   );
 }
 
-function Field({ label, required, children }) {
+function Field({ label, required, error, children }) {
   return (
     <div>
       <label className="label text-xs">{label}{required && ' *'}</label>
       {children}
+      {error && <p className="text-red-500 text-xs mt-1">{error}</p>}
     </div>
   );
 }
@@ -54,9 +61,30 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+  const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
 
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+  const set = (k, v) => {
+    setForm(p => ({ ...p, [k]: v }));
+    setErrors(p => ({ ...p, [k]: undefined }));
+  };
+
+  const validate = () => {
+    const e = {};
+    if (!form.name.trim() || form.name.length < 2) e.name = 'Name must be at least 2 characters';
+    if (!form.email.trim()) e.email = 'Email is required';
+    if (!PASSWORD_RE.test(form.password)) e.password = 'Min 8 chars with uppercase, lowercase, digit & special char';
+    if (form.phone && !PHONE_RE.test(form.phone)) e.phone = 'Enter a valid phone number (7–15 digits, optional + prefix)';
+    if (isSuperAdmin && !form.tenantId) e.tenantId = 'Please select a tenant';
+    if (form.role === 'VENDOR') {
+      if (!form.vendorCode.trim()) e.vendorCode = 'Vendor code is required';
+      if (form.gstin && !GSTIN_RE.test(form.gstin)) e.gstin = 'Invalid GSTIN format (e.g. 22AAAAA0000A1Z5)';
+      if (form.pan && !PAN_RE.test(form.pan)) e.pan = 'Invalid PAN format (e.g. AAAAA1234A)';
+      if (form.ifscCode && !IFSC_RE.test(form.ifscCode)) e.ifscCode = 'Invalid IFSC format (e.g. HDFC0001234)';
+    }
+    setErrors(e);
+    return Object.keys(e).length === 0;
+  };
 
   const fetchUsers = () => {
     adminService.getAllUsers()
@@ -76,6 +104,7 @@ export default function AdminUsersPage() {
 
   const handleCreate = async e => {
     e.preventDefault();
+    if (!validate()) return;
     setSaving(true);
     try {
       await adminService.createUser(form);
@@ -176,25 +205,25 @@ export default function AdminUsersPage() {
           <form onSubmit={handleCreate} className="space-y-4">
             {/* Core fields */}
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Full Name" required>
-                <input required className="input text-sm" value={form.name} onChange={e => set('name', e.target.value)} placeholder="John Doe"/>
+              <Field label="Full Name" required error={errors.name}>
+                <input required className="input text-sm" maxLength={100} value={form.name} onChange={e => set('name', e.target.value)} placeholder="John Doe"/>
               </Field>
-              <Field label="Email" required>
-                <input type="email" required className="input text-sm" value={form.email} onChange={e => set('email', e.target.value)} placeholder="john@company.com"/>
+              <Field label="Email" required error={errors.email}>
+                <input type="email" required className="input text-sm" maxLength={150} value={form.email} onChange={e => set('email', e.target.value)} placeholder="john@company.com" autoComplete="off"/>
               </Field>
-              <Field label="Password" required>
-                <input type="password" required className="input text-sm" value={form.password} onChange={e => set('password', e.target.value)} placeholder="Min 8 chars"/>
+              <Field label="Password" required error={errors.password}>
+                <input type="password" required className="input text-sm" maxLength={64} value={form.password} onChange={e => set('password', e.target.value)} placeholder="Min 8 chars, upper+lower+digit+symbol" autoComplete="new-password"/>
               </Field>
               <Field label="Role" required>
                 <select className="input text-sm" value={form.role} onChange={e => set('role', e.target.value)}>
                   {ROLES.map(r => <option key={r}>{r}</option>)}
                 </select>
               </Field>
-              <Field label="Phone">
-                <input className="input text-sm" value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="10 digits"/>
+              <Field label="Phone" error={errors.phone}>
+                <input type="tel" className="input text-sm" maxLength={16} value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+91XXXXXXXXXX or 10-digit number"/>
               </Field>
               {isSuperAdmin && (
-                <Field label="Tenant" required>
+                <Field label="Tenant" required error={errors.tenantId}>
                   <select className="input text-sm" value={form.tenantId} onChange={e => set('tenantId', e.target.value)}>
                     <option value="">-- Select Tenant --</option>
                     {tenants.map(t => <option key={t.id} value={t.id}>{t.name} ({t.code})</option>)}
@@ -208,28 +237,28 @@ export default function AdminUsersPage() {
               <div className="border border-blue-100 rounded-xl p-4 bg-blue-50/50 space-y-3">
                 <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">Vendor Details</p>
                 <div className="grid grid-cols-2 gap-3">
-                  <Field label="Vendor Code" required>
-                    <input required className="input text-sm" value={form.vendorCode} onChange={e => set('vendorCode', e.target.value)} placeholder="VND001"/>
+                  <Field label="Vendor Code" required error={errors.vendorCode}>
+                    <input required className="input text-sm" maxLength={50} value={form.vendorCode} onChange={e => set('vendorCode', e.target.value)} placeholder="VND001"/>
                   </Field>
                   <Field label="Contact Person">
-                    <input className="input text-sm" value={form.contactPerson} onChange={e => set('contactPerson', e.target.value)}/>
+                    <input className="input text-sm" maxLength={100} value={form.contactPerson} onChange={e => set('contactPerson', e.target.value)}/>
                   </Field>
                   <Field label="Bank Name">
-                    <input className="input text-sm" value={form.bankName} onChange={e => set('bankName', e.target.value)}/>
+                    <input className="input text-sm" maxLength={100} value={form.bankName} onChange={e => set('bankName', e.target.value)}/>
                   </Field>
                   <Field label="Account Number">
-                    <input className="input text-sm" value={form.accountNumber} onChange={e => set('accountNumber', e.target.value)}/>
+                    <input className="input text-sm" maxLength={20} value={form.accountNumber} onChange={e => set('accountNumber', e.target.value.replace(/\D/g, ''))} placeholder="Digits only"/>
                   </Field>
                   <Field label="Account Name">
-                    <input className="input text-sm" value={form.accountName} onChange={e => set('accountName', e.target.value)} placeholder="Account holder name"/>
+                    <input className="input text-sm" maxLength={100} value={form.accountName} onChange={e => set('accountName', e.target.value)} placeholder="Account holder name"/>
                   </Field>
-                  <Field label="IFSC Code">
-                    <input className="input text-sm" value={form.ifscCode} onChange={e => set('ifscCode', e.target.value)} placeholder="HDFC0001234"/>
+                  <Field label="IFSC Code" error={errors.ifscCode}>
+                    <input className="input text-sm" maxLength={11} value={form.ifscCode} onChange={e => set('ifscCode', e.target.value.toUpperCase())} placeholder="HDFC0001234"/>
                   </Field>
-                  <Field label="GSTIN">
+                  <Field label="GSTIN" error={errors.gstin}>
                     <input className="input text-sm" value={form.gstin} onChange={e => set('gstin', e.target.value.toUpperCase())} placeholder="22AAAAA0000A1Z5" maxLength={15}/>
                   </Field>
-                  <Field label="PAN">
+                  <Field label="PAN" error={errors.pan}>
                     <input className="input text-sm" value={form.pan} onChange={e => set('pan', e.target.value.toUpperCase())} placeholder="AAAAA1234A" maxLength={10}/>
                   </Field>
                   <Field label="Vendor Type">

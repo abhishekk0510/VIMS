@@ -75,8 +75,10 @@ public class InvoiceController {
             @AuthenticationPrincipal UserDetails user,
             @PathVariable UUID id) {
         Resource file = invoiceService.downloadFile(user.getUsername(), id);
+        String safeFilename = file.getFilename() == null ? "invoice"
+                : file.getFilename().replaceAll("[^a-zA-Z0-9._-]", "_");
         return ResponseEntity.ok()
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.getFilename() + "\"")
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + safeFilename + "\"")
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
                 .body(file);
     }

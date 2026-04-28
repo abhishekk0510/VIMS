@@ -17,6 +17,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -38,6 +39,7 @@ public class AuthService {
     private long refreshExpirationMs;
 
     private static final int MAX_FAILED = 5;
+    private static final int LOCK_DURATION_MINUTES = 30;
 
     @Transactional
     public AuthResponse login(LoginRequest req) {
@@ -45,7 +47,15 @@ public class AuthService {
                 .orElseThrow(() -> new BadCredentialsException("Invalid credentials"));
 
         if (user.isAccountLocked()) {
-            throw new LockedException("Account is locked");
+            if (user.getLockTime() != null &&
+                    user.getLockTime().plusMinutes(LOCK_DURATION_MINUTES).isBefore(LocalDateTime.now())) {
+                user.setAccountLocked(false);
+                user.setFailedLoginAttempts(0);
+                user.setLockTime(null);
+                userRepository.save(user);
+            } else {
+                throw new LockedException("Account is locked. Try again after " + LOCK_DURATION_MINUTES + " minutes.");
+            }
         }
 
         try {
@@ -129,7 +139,8 @@ public class AuthService {
         user.setFailedLoginAttempts(user.getFailedLoginAttempts() + 1);
         if (user.getFailedLoginAttempts() >= MAX_FAILED) {
             user.setAccountLocked(true);
-            log.warn("Account locked for user: {}", user.getEmail());
+            user.setLockTime(LocalDateTime.now());
+            log.warn("Account locked for user: {} — will auto-unlock after {} minutes", user.getEmail(), LOCK_DURATION_MINUTES);
         }
         userRepository.save(user);
     }

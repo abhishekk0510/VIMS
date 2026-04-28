@@ -235,7 +235,12 @@ public class InvoiceService {
             throw new ResourceNotFoundException("No file attached to this invoice");
         }
 
-        java.io.File file = new java.io.File(invoice.getFilePath());
+        Path uploadRoot = Paths.get(uploadDir).toAbsolutePath().normalize();
+        Path filePath = Paths.get(invoice.getFilePath()).toAbsolutePath().normalize();
+        if (!filePath.startsWith(uploadRoot)) {
+            throw new BusinessException("Access denied");
+        }
+        java.io.File file = filePath.toFile();
         if (!file.exists()) {
             throw new ResourceNotFoundException("File not found on server");
         }
@@ -350,11 +355,14 @@ public class InvoiceService {
         }
 
         try {
-            Path dir = Paths.get(uploadDir);
+            Path dir = Paths.get(uploadDir).toAbsolutePath().normalize();
             Files.createDirectories(dir);
             String filename = UUID.randomUUID() + "_" + file.getOriginalFilename()
                     .replaceAll("[^a-zA-Z0-9._-]", "_");
-            Path dest = dir.resolve(filename);
+            Path dest = dir.resolve(filename).normalize();
+            if (!dest.startsWith(dir)) {
+                throw new BusinessException("Invalid file path");
+            }
             Files.copy(file.getInputStream(), dest, StandardCopyOption.REPLACE_EXISTING);
             invoice.setFilePath(dest.toString());
             invoice.setFileName(file.getOriginalFilename());
