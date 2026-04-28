@@ -7,7 +7,7 @@ import { PlusIcon, LockOpenIcon } from '@heroicons/react/24/outline';
 const ROLES = ['VENDOR','OPERATIONS','FINANCE','CLIENT','ADMIN','DEPT_HEAD','CFO','SUPER_ADMIN'];
 const VENDOR_TYPES = ['General', 'MSME', 'Government', 'Startup', 'Other'];
 
-const PHONE_RE   = /^\+?[1-9]\d{6,14}$/;
+const PHONE_RE   = /^(\+91)?[6-9]\d{9}$/;
 const GSTIN_RE   = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 const PAN_RE     = /^[A-Z]{5}[0-9]{4}[A-Z]{1}$/;
 const IFSC_RE    = /^[A-Z]{4}0[A-Z0-9]{6}$/;
@@ -74,7 +74,7 @@ export default function AdminUsersPage() {
     if (!form.name.trim() || form.name.length < 2) e.name = 'Name must be at least 2 characters';
     if (!form.email.trim()) e.email = 'Email is required';
     if (!PASSWORD_RE.test(form.password)) e.password = 'Min 8 chars with uppercase, lowercase, digit & special char';
-    if (form.phone && !PHONE_RE.test(form.phone)) e.phone = 'Enter a valid phone number (7–15 digits, optional + prefix)';
+    if (form.phone && !PHONE_RE.test(form.phone)) e.phone = 'Enter a valid 10-digit Indian mobile number (e.g. 9876543210 or +919876543210)';
     if (isSuperAdmin && !form.tenantId) e.tenantId = 'Please select a tenant';
     if (form.role === 'VENDOR') {
       if (!form.vendorCode.trim()) e.vendorCode = 'Vendor code is required';
@@ -220,7 +220,7 @@ export default function AdminUsersPage() {
                 </select>
               </Field>
               <Field label="Phone" error={errors.phone}>
-                <input type="tel" className="input text-sm" maxLength={16} value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="+91XXXXXXXXXX or 10-digit number"/>
+                <input type="tel" className="input text-sm" maxLength={13} value={form.phone} onChange={e => set('phone', e.target.value)} placeholder="9876543210 or +919876543210"/>
               </Field>
               {isSuperAdmin && (
                 <Field label="Tenant" required error={errors.tenantId}>

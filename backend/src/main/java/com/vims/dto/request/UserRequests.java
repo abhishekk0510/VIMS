@@ -24,8 +24,7 @@ public class UserRequests {
         @NotNull
         private Role role;
 
-        @Pattern(regexp = "^\\+?[1-9]\\d{6,14}$", message = "Phone must be 7–15 digits, optionally starting with +")
-        @Size(max = 16)
+        @Pattern(regexp = "^(\\+91)?[6-9]\\d{9}$", message = "Phone must be a valid 10-digit Indian mobile number (optionally prefixed with +91)")
         private String phone;
 
         // Used by SUPER_ADMIN when creating users for a specific tenant
@@ -49,8 +48,7 @@ public class UserRequests {
     public static class UpdateUserRequest {
         @Size(min=2, max=100)
         private String name;
-        @Pattern(regexp = "^\\+?[1-9]\\d{6,14}$", message = "Phone must be 7–15 digits, optionally starting with +")
-        @Size(max = 16)
+        @Pattern(regexp = "^(\\+91)?[6-9]\\d{9}$", message = "Phone must be a valid 10-digit Indian mobile number (optionally prefixed with +91)")
         private String phone;
         private Boolean enabled;
     }
