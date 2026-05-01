@@ -16,6 +16,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.InputStream;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.UUID;
 
 @Service
@@ -67,21 +72,38 @@ public class OcrService {
     }
 
     /**
-     * Extracts text from a file. PDF: tries digital text first, falls back to OCR.
-     * Images: direct OCR.
+     * Extracts text from a file (local path or cloud URL).
+     * PDF: tries digital text first, falls back to OCR. Images: direct OCR.
      */
     public String extractText(String filePath, String fileType) {
-        File file = new File(filePath);
-        if (!file.exists() || fileType == null) return "";
+        if (filePath == null || filePath.isBlank() || fileType == null) return "";
         try {
+            if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
+                return extractFromUrl(filePath, fileType);
+            }
+            File file = new File(filePath);
+            if (!file.exists()) return "";
             if (fileType.contains("pdf")) return extractFromPdf(file);
             if (fileType.startsWith("image/")) return ocrFile(file);
         } catch (UnsatisfiedLinkError e) {
-            log.warn("Tesseract not found. Run: brew install tesseract");
+            log.warn("Tesseract not found. Install: brew install tesseract (macOS) or apt-get install tesseract-ocr (Linux)");
         } catch (Exception e) {
             log.warn("Text extraction error: {}", e.getMessage());
         }
         return "";
+    }
+
+    private String extractFromUrl(String urlStr, String fileType) throws Exception {
+        Path tempFile = Files.createTempFile("vims_ocr_", "_" + UUID.randomUUID());
+        try (InputStream in = new URL(urlStr).openStream()) {
+            Files.copy(in, tempFile, StandardCopyOption.REPLACE_EXISTING);
+            File file = tempFile.toFile();
+            if (fileType.contains("pdf")) return extractFromPdf(file);
+            if (fileType.startsWith("image/")) return ocrFile(file);
+            return "";
+        } finally {
+            Files.deleteIfExists(tempFile);
+        }
     }
 
     private String extractFromPdf(File file) throws Exception {

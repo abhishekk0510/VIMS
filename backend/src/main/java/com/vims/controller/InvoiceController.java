@@ -3,6 +3,7 @@ package com.vims.controller;
 import com.vims.dto.request.InvoiceRequests.*;
 import com.vims.dto.response.Responses.*;
 import com.vims.enums.InvoiceStatus;
+import com.vims.service.FileDownload;
 import com.vims.service.InvoiceService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -74,13 +75,12 @@ public class InvoiceController {
     public ResponseEntity<Resource> download(
             @AuthenticationPrincipal UserDetails user,
             @PathVariable UUID id) {
-        Resource file = invoiceService.downloadFile(user.getUsername(), id);
-        String safeFilename = file.getFilename() == null ? "invoice"
-                : file.getFilename().replaceAll("[^a-zA-Z0-9._-]", "_");
+        FileDownload download = invoiceService.downloadFile(user.getUsername(), id);
+        String safeFilename = download.filename().replaceAll("[^a-zA-Z0-9._-]", "_");
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + safeFilename + "\"")
                 .contentType(MediaType.APPLICATION_OCTET_STREAM)
-                .body(file);
+                .body(download.resource());
     }
 
     @GetMapping("/{id}")

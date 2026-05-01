@@ -1,8 +1,7 @@
 package com.vims.security;
 
-import com.bucket4j.Bandwidth;
-import com.bucket4j.Bucket;
-import com.bucket4j.Refill;
+import io.github.bucket4j.Bandwidth;
+import io.github.bucket4j.Bucket;
 import jakarta.servlet.*;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -44,13 +43,19 @@ public class RateLimitFilter extends GenericFilter {
 
     private Bucket createLoginBucket() {
         return Bucket.builder()
-                .addLimit(Bandwidth.classic(10, Refill.intervally(10, Duration.ofMinutes(1))))
+                .addLimit(Bandwidth.builder()
+                        .capacity(10)
+                        .refillIntervally(10, Duration.ofMinutes(1))
+                        .build())
                 .build();
     }
 
     private Bucket createApiBucket() {
         return Bucket.builder()
-                .addLimit(Bandwidth.classic(200, Refill.intervally(200, Duration.ofMinutes(1))))
+                .addLimit(Bandwidth.builder()
+                        .capacity(200)
+                        .refillIntervally(200, Duration.ofMinutes(1))
+                        .build())
                 .build();
     }
 

@@ -8,10 +8,10 @@ import com.vims.enums.InvoiceStatus;
 import com.vims.enums.Role;
 import com.vims.exception.*;
 import com.vims.repository.*;
+import com.vims.service.storage.StorageService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.core.io.FileSystemResource;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,7 +19,6 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.math.BigDecimal;
-import java.nio.file.*;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -37,9 +36,7 @@ public class InvoiceService {
     private final AiService aiService;
     private final OcrService ocrService;
     private final AuditLogService auditLogService;
-
-    @Value("${file.upload.dir}")
-    private String uploadDir;
+    private final StorageService storageService;
 
     @Value("${file.allowed-types}")
     private String allowedTypes;
@@ -224,7 +221,7 @@ public class InvoiceService {
     }
 
     @Transactional(readOnly = true)
-    public org.springframework.core.io.Resource downloadFile(String userEmail, UUID id) {
+    public FileDownload downloadFile(String userEmail, UUID id) {
         User user = getUser(userEmail);
         Invoice invoice = getInvoice(id);
 
@@ -234,17 +231,13 @@ public class InvoiceService {
         if (invoice.getFilePath() == null || invoice.getFilePath().isBlank()) {
             throw new ResourceNotFoundException("No file attached to this invoice");
         }
-
-        Path uploadRoot = Paths.get(uploadDir).toAbsolutePath().normalize();
-        Path filePath = Paths.get(invoice.getFilePath()).toAbsolutePath().normalize();
-        if (!filePath.startsWith(uploadRoot)) {
-            throw new BusinessException("Access denied");
-        }
-        java.io.File file = filePath.toFile();
-        if (!file.exists()) {
+        try {
+            var resource = storageService.load(invoice.getFilePath());
+            String filename = invoice.getFileName() != null ? invoice.getFileName() : "invoice";
+            return new FileDownload(resource, filename);
+        } catch (IOException e) {
             throw new ResourceNotFoundException("File not found on server");
         }
-        return new FileSystemResource(file);
     }
 
     @Transactional(readOnly = true)
@@ -353,18 +346,9 @@ public class InvoiceService {
         if (!Arrays.asList(allowedTypes.split(",")).contains(contentType)) {
             throw new BusinessException("File type not allowed: " + contentType);
         }
-
         try {
-            Path dir = Paths.get(uploadDir).toAbsolutePath().normalize();
-            Files.createDirectories(dir);
-            String filename = UUID.randomUUID() + "_" + file.getOriginalFilename()
-                    .replaceAll("[^a-zA-Z0-9._-]", "_");
-            Path dest = dir.resolve(filename).normalize();
-            if (!dest.startsWith(dir)) {
-                throw new BusinessException("Invalid file path");
-            }
-            Files.copy(file.getInputStream(), dest, StandardCopyOption.REPLACE_EXISTING);
-            invoice.setFilePath(dest.toString());
+            String fileRef = storageService.save(file);
+            invoice.setFilePath(fileRef);
             invoice.setFileName(file.getOriginalFilename());
             invoice.setFileType(contentType);
         } catch (IOException e) {
