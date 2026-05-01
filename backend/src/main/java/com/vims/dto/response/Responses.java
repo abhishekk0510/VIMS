@@ -98,6 +98,8 @@ public class Responses {
         private String currentStepName;
         private Role currentStepRole;
         private String workflowName;
+        // All levels of the assigned workflow (populated on detail view for dynamic tracker)
+        private List<WorkflowLevelDto> workflowLevels;
         // OCR + AI fields
         private String ocrText;
         private String aiAnalysis;

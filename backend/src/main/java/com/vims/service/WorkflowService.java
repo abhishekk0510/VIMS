@@ -68,6 +68,11 @@ public class WorkflowService {
     }
 
     @Transactional(readOnly = true)
+    public List<WorkflowLevel> getLevelsSorted(UUID workflowId) {
+        return levelRepository.findByWorkflowIdOrderByLevelOrderAsc(workflowId);
+    }
+
+    @Transactional(readOnly = true)
     public int getTotalLevels(UUID workflowId) {
         return levelRepository.countByWorkflowId(workflowId);
     }

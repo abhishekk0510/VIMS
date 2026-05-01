@@ -409,6 +409,18 @@ public class InvoiceService {
             }
         }
 
+        // Fetch all workflow levels for the dynamic tracker (detail view only)
+        List<WorkflowLevelDto> workflowLevels = null;
+        if (includeHistory && i.getWorkflowId() != null) {
+            workflowLevels = workflowService.getLevelsSorted(i.getWorkflowId()).stream()
+                    .map(l -> WorkflowLevelDto.builder()
+                            .levelOrder(l.getLevelOrder())
+                            .levelName(l.getLevelName())
+                            .approverRole(l.getApproverRole())
+                            .build())
+                    .collect(Collectors.toList());
+        }
+
         return InvoiceDto.builder()
                 .id(i.getId()).invoiceNumber(i.getInvoiceNumber())
                 .vendor(UserDto.builder().id(i.getVendor().getId())
@@ -423,6 +435,7 @@ public class InvoiceService {
                 .currentStepName(currentStepName)
                 .currentStepRole(currentStepRole)
                 .workflowName(workflowName)
+                .workflowLevels(workflowLevels)
                 .ocrText(i.getOcrText())
                 .aiAnalysis(i.getAiAnalysis()).aiAnomalyFlag(i.getAiAnomalyFlag())
                 .aiRiskScore(i.getAiRiskScore())

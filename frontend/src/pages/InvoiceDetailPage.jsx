@@ -6,17 +6,22 @@ import toast from 'react-hot-toast';
 import { format } from 'date-fns';
 import { CheckCircleIcon, XCircleIcon, CurrencyRupeeIcon, ArrowDownTrayIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 
-// 7 canonical workflow stages shown as a progress track
-const WORKFLOW_STAGES = [
-  { key: 'submitted',   label: 'Submitted' },
-  { key: 'l1',         label: 'L1 Review' },
-  { key: 'l2',         label: 'L2 Review' },
-  { key: 'dept_head',  label: 'Dept Head' },
-  { key: 'finance_l1', label: 'Finance L1' },
-  { key: 'finance_l2', label: 'Finance L2' },
-  { key: 'cfo',        label: 'CFO' },
-  { key: 'approved',   label: 'Approved' },
-];
+// Build stages dynamically from the workflow levels returned by the API.
+// Falls back to a generic "Step N" label if level names aren't available.
+function buildStages(invoice) {
+  const stages = [{ key: 'submitted', label: 'Submitted' }];
+  if (invoice.workflowLevels && invoice.workflowLevels.length > 0) {
+    invoice.workflowLevels.forEach(l => {
+      stages.push({ key: `level-${l.levelOrder}`, label: l.levelName, step: l.levelOrder });
+    });
+  } else if (invoice.totalApprovalSteps) {
+    for (let s = 1; s <= invoice.totalApprovalSteps; s++) {
+      stages.push({ key: `step-${s}`, label: `Step ${s}`, step: s });
+    }
+  }
+  stages.push({ key: 'approved', label: 'Approved' });
+  return stages;
+}
 
 function StatusBadge({ status }) {
   return <span className={`badge-${status?.toLowerCase()} text-sm px-3 py-1`}>{status?.replace(/_/g,' ')}</span>;
@@ -38,77 +43,85 @@ function RiskBar({ score }) {
   );
 }
 
-// 7-step visual tracker
+// Dynamic approval stage tracker — uses workflow levels from the API
 function ApprovalStageTracker({ invoice }) {
-  if (invoice.status === 'DRAFT' || invoice.status === 'REJECTED' || invoice.status === 'PAID') return null;
+  if (!['PENDING_APPROVAL', 'APPROVED'].includes(invoice.status)) return null;
 
-  // Map current step from the workflow (1-based) to visual position
-  // We collapse dynamic workflow levels onto the 8-stage visual
+  const stages = buildStages(invoice);
   const isApproved = invoice.status === 'APPROVED';
   const isPending  = invoice.status === 'PENDING_APPROVAL';
 
-  // Determine current visual step:
-  // Step 0 = Submitted (always done once pending), then steps 1-6 per workflow level, step 7 = Approved
-  let activeVisualStep = 0; // default = Submitted
+  // activeVisualStep: index into stages[]
+  // stages[0] = Submitted, stages[1..N] = workflow levels, stages[N+1] = Approved
+  let activeVisualStep = 0;
   if (isPending && invoice.currentApprovalStep != null) {
-    // currentApprovalStep is 1-based; show as step index 1..6
-    activeVisualStep = Math.min(invoice.currentApprovalStep, WORKFLOW_STAGES.length - 2);
+    activeVisualStep = Math.min(invoice.currentApprovalStep, stages.length - 2);
   } else if (isApproved) {
-    activeVisualStep = WORKFLOW_STAGES.length - 1; // last dot = Approved
+    activeVisualStep = stages.length - 1;
   }
+
+  const minWidth = Math.max(360, stages.length * 80);
 
   return (
     <div className="card bg-gradient-to-r from-slate-50 to-blue-50 border-blue-100">
-      <h3 className="text-sm font-bold text-gray-800 mb-4">Approval Stages</h3>
+      <h3 className="text-sm font-bold text-gray-800 mb-4">Approval Flow</h3>
 
-      {/* Dots track */}
-      <div className="relative">
-        {/* Connecting line */}
-        <div className="absolute top-4 left-0 right-0 h-0.5 bg-gray-200 z-0" style={{ left: '20px', right: '20px' }}/>
-        <div
-          className="absolute top-4 h-0.5 bg-blue-500 z-0 transition-all"
-          style={{
-            left: '20px',
-            width: activeVisualStep === 0
-              ? '0%'
-              : `${(activeVisualStep / (WORKFLOW_STAGES.length - 1)) * 100}%`
-          }}
-        />
+      <div className="overflow-x-auto -mx-2 px-2">
+        <div className="relative" style={{ minWidth }}>
+          {/* Grey base line */}
+          <div className="absolute top-4 h-0.5 bg-gray-200 z-0" style={{ left: '20px', right: '20px' }}/>
+          {/* Blue progress line */}
+          <div
+            className="absolute top-4 h-0.5 bg-blue-500 z-0 transition-all duration-500"
+            style={{
+              left: '20px',
+              width: activeVisualStep === 0
+                ? '0%'
+                : `${(activeVisualStep / (stages.length - 1)) * 100}%`,
+            }}
+          />
 
-        {/* Dots */}
-        <div className="relative z-10 flex justify-between">
-          {WORKFLOW_STAGES.map((stage, idx) => {
-            const isDone    = idx < activeVisualStep;
-            const isCurrent = idx === activeVisualStep;
-            const isFuture  = idx > activeVisualStep;
-            return (
-              <div key={stage.key} className="flex flex-col items-center gap-1.5" style={{ minWidth: 0 }}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
-                  isDone    ? 'bg-emerald-500 border-emerald-500 text-white' :
-                  isCurrent ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-200' :
-                              'bg-white border-gray-300 text-gray-400'
-                }`}>
-                  {isDone ? (
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
-                    </svg>
-                  ) : idx + 1}
+          <div className="relative z-10 flex justify-between">
+            {stages.map((stage, idx) => {
+              const isDone    = idx < activeVisualStep;
+              const isCurrent = idx === activeVisualStep;
+              return (
+                <div key={stage.key} className="flex flex-col items-center gap-1.5" style={{ minWidth: 0 }}>
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
+                    isDone    ? 'bg-emerald-500 border-emerald-500 text-white' :
+                    isCurrent ? 'bg-blue-600 border-blue-600 text-white shadow-md shadow-blue-200' :
+                                'bg-white border-gray-300 text-gray-400'
+                  }`}>
+                    {isDone ? (
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
+                      </svg>
+                    ) : idx + 1}
+                  </div>
+                  <span className={`text-center font-medium leading-tight ${
+                    isDone ? 'text-emerald-600' : isCurrent ? 'text-blue-700' : 'text-gray-400'
+                  }`} style={{ fontSize: '10px', maxWidth: '64px' }}>
+                    {stage.label}
+                  </span>
                 </div>
-                <span className={`text-center text-xs font-medium leading-tight max-w-[56px] ${
-                  isDone ? 'text-emerald-600' : isCurrent ? 'text-blue-700' : 'text-gray-400'
-                }`} style={{ fontSize: '10px' }}>
-                  {stage.label}
-                </span>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
 
       {isPending && invoice.currentStepName && (
         <p className="text-xs text-blue-700 mt-4 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
           Awaiting <strong>{invoice.currentStepName}</strong>
-          {invoice.currentStepRole && <span className="text-blue-500"> ({invoice.currentStepRole})</span>}
+          {invoice.currentStepRole && <span className="text-blue-500"> ({invoice.currentStepRole.replace(/_/g, ' ')})</span>}
+        </p>
+      )}
+      {isApproved && (
+        <p className="text-xs text-emerald-700 mt-4 bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2 flex items-center gap-1.5">
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7"/>
+          </svg>
+          All approval levels completed — invoice fully approved.
         </p>
       )}
     </div>
@@ -380,29 +393,54 @@ export default function InvoiceDetailPage() {
               <div className="card">
                 <h2 className="text-base font-semibold text-gray-900 mb-4">Approval Timeline</h2>
                 <div className="space-y-4">
-                  {invoice.history.map((h, i) => (
-                    <div key={h.id} className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${
-                          h.statusAfter === 'APPROVED' || h.statusAfter === 'PAID' ? 'bg-emerald-500' :
-                          h.statusAfter === 'REJECTED' ? 'bg-red-500' : 'bg-blue-500'
-                        }`}>{i + 1}</div>
-                        {i < invoice.history.length - 1 && <div className="w-0.5 flex-1 bg-gray-200 mt-1"/>}
-                      </div>
-                      <div className="pb-4 flex-1">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-semibold text-gray-900">{h.actionBy?.name}</span>
-                          <span className="text-xs text-gray-400">{h.createdAt ? format(new Date(h.createdAt), 'dd MMM, HH:mm') : ''}</span>
+                  {invoice.history.map((h, i) => {
+                    // Determine a descriptive action label instead of raw statusAfter
+                    const isSubmission      = h.statusAfter === 'PENDING_APPROVAL' && h.role === 'VENDOR';
+                    const isIntermediateOk  = h.statusAfter === 'PENDING_APPROVAL' && h.role !== 'VENDOR';
+                    const isFinalApproved   = h.statusAfter === 'APPROVED';
+                    const isRejected        = h.statusAfter === 'REJECTED';
+                    const isPaid            = h.statusAfter === 'PAID';
+
+                    const dotColor = isFinalApproved || isPaid ? 'bg-emerald-500'
+                      : isRejected ? 'bg-red-500'
+                      : isIntermediateOk ? 'bg-emerald-400'
+                      : 'bg-blue-500';
+
+                    const actionLabel = isSubmission     ? 'Submitted for approval'
+                      : isIntermediateOk ? 'Level approved — moved to next step'
+                      : isFinalApproved  ? 'Fully approved'
+                      : isRejected       ? 'Rejected'
+                      : isPaid           ? 'Payment marked'
+                      : h.statusAfter.replace(/_/g, ' ');
+
+                    const labelColor = isFinalApproved || isIntermediateOk || isPaid
+                      ? 'text-emerald-700'
+                      : isRejected ? 'text-red-600'
+                      : 'text-blue-700';
+
+                    return (
+                      <div key={h.id} className="flex gap-3">
+                        <div className="flex flex-col items-center">
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 ${dotColor}`}>
+                            {i + 1}
+                          </div>
+                          {i < invoice.history.length - 1 && <div className="w-0.5 flex-1 bg-gray-200 mt-1"/>}
                         </div>
-                        <div className="text-xs text-gray-400 mt-0.5 flex items-center gap-2">
-                          <span>{h.role}</span>
-                          <span>→</span>
-                          <StatusBadge status={h.statusAfter}/>
+                        <div className="pb-4 flex-1">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-semibold text-gray-900">{h.actionBy?.name}</span>
+                            <span className="text-xs text-gray-400">{h.createdAt ? format(new Date(h.createdAt), 'dd MMM, HH:mm') : ''}</span>
+                          </div>
+                          <div className={`text-xs mt-0.5 flex items-center gap-1.5 ${labelColor}`}>
+                            <span className="text-gray-400">{h.role?.replace(/_/g, ' ')}</span>
+                            <span className="text-gray-300">·</span>
+                            <span className="font-medium">{actionLabel}</span>
+                          </div>
+                          {h.remarks && <p className="text-xs text-gray-600 mt-1 italic bg-gray-50 px-2 py-1 rounded">"{h.remarks}"</p>}
                         </div>
-                        {h.remarks && <p className="text-xs text-gray-600 mt-1 italic bg-gray-50 px-2 py-1 rounded">"{h.remarks}"</p>}
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ) : (
