@@ -114,7 +114,8 @@ public class InvoiceService {
         Invoice invoice = getInvoice(invoiceId);
         User actor = getUser(userEmail);
 
-        if (invoice.getStatus() != InvoiceStatus.PENDING_APPROVAL) {
+        if (invoice.getStatus() != InvoiceStatus.PENDING_APPROVAL
+                && invoice.getStatus() != InvoiceStatus.REWORK_REQUIRED) {
             throw new BusinessException("Invoice is not pending approval");
         }
         if (invoice.getWorkflowId() == null || invoice.getCurrentApprovalStep() == null) {
@@ -158,16 +159,30 @@ public class InvoiceService {
                 notificationService.notifyFinalApproved(invoice, vendorName, vendorEmail, actor.getName(), currentLevel);
             }
         } else {
-            // Rejection — vendor must fix and resubmit
-            invoice.setStatus(InvoiceStatus.REJECTED);
-            invoice.setRejectionRemarks(req.getRemarks());
-            logHistory(invoice, actor, InvoiceStatus.REJECTED, req.getRemarks());
-            auditLogService.log("INVOICE_REJECTED", actor.getName(), actor.getRole().name(),
-                    "Invoice " + invoice.getInvoiceNumber() + " rejected at " + currentLevel.getLevelName(), invoice.getInvoiceNumber());
-            invoiceRepository.save(invoice);
-            String vendorName = invoice.getVendor().getName();
-            String vendorEmail = invoice.getVendor().getEmail();
-            notificationService.notifyRejected(invoice, vendorName, vendorEmail, actor.getName(), currentLevel, req.getRemarks());
+            if (invoice.getCurrentApprovalStep() != null && invoice.getCurrentApprovalStep() > 1) {
+                // Higher-level (e.g. Finance) rejection — send back to Operations (step 1) for rework
+                invoice.setStatus(InvoiceStatus.REWORK_REQUIRED);
+                invoice.setCurrentApprovalStep(1);
+                invoice.setRejectionRemarks(req.getRemarks());
+                logHistory(invoice, actor, InvoiceStatus.REWORK_REQUIRED, req.getRemarks());
+                auditLogService.log("INVOICE_REWORK_REQUIRED", actor.getName(), actor.getRole().name(),
+                        "Invoice " + invoice.getInvoiceNumber() + " sent back for rework from " + currentLevel.getLevelName(), invoice.getInvoiceNumber());
+                invoiceRepository.save(invoice);
+                workflowService.getLevel(invoice.getWorkflowId(), 1)
+                        .ifPresent(opsLevel -> notificationService.notifyReworkRequired(
+                                invoice, actor.getName(), currentLevel, opsLevel, req.getRemarks()));
+            } else {
+                // First-level rejection — vendor must fix and resubmit
+                invoice.setStatus(InvoiceStatus.REJECTED);
+                invoice.setRejectionRemarks(req.getRemarks());
+                logHistory(invoice, actor, InvoiceStatus.REJECTED, req.getRemarks());
+                auditLogService.log("INVOICE_REJECTED", actor.getName(), actor.getRole().name(),
+                        "Invoice " + invoice.getInvoiceNumber() + " rejected at " + currentLevel.getLevelName(), invoice.getInvoiceNumber());
+                invoiceRepository.save(invoice);
+                String vendorName = invoice.getVendor().getName();
+                String vendorEmail = invoice.getVendor().getEmail();
+                notificationService.notifyRejected(invoice, vendorName, vendorEmail, actor.getName(), currentLevel, req.getRemarks());
+            }
         }
 
         return toDto(invoice, true);
@@ -221,6 +236,17 @@ public class InvoiceService {
     }
 
     @Transactional(readOnly = true)
+    public String getFileContentType(String userEmail, UUID id) {
+        User user = getUser(userEmail);
+        Invoice invoice = getInvoice(id);
+        if (user.getRole() == Role.VENDOR && !invoice.getVendor().getId().equals(user.getId())) {
+            throw new AccessDeniedException("Access denied");
+        }
+        String type = invoice.getFileType();
+        return (type != null && !type.isBlank()) ? type : "application/octet-stream";
+    }
+
+    @Transactional(readOnly = true)
     public FileDownload downloadFile(String userEmail, UUID id) {
         User user = getUser(userEmail);
         Invoice invoice = getInvoice(id);
@@ -262,9 +288,12 @@ public class InvoiceService {
                     .totalInvoices(invoiceRepository.countByVendorId(vid))
                     .draft(invoiceRepository.countByVendorIdAndStatus(vid, InvoiceStatus.DRAFT))
                     .pendingApproval(invoiceRepository.countByVendorIdAndStatus(vid, InvoiceStatus.PENDING_APPROVAL))
+                    .reworkRequired(invoiceRepository.countByVendorIdAndStatus(vid, InvoiceStatus.REWORK_REQUIRED))
                     .approved(invoiceRepository.countByVendorIdAndStatus(vid, InvoiceStatus.APPROVED))
                     .rejected(invoiceRepository.countByVendorIdAndStatus(vid, InvoiceStatus.REJECTED))
                     .paid(invoiceRepository.countByVendorIdAndStatus(vid, InvoiceStatus.PAID))
+                    .totalPendingAmount(invoiceRepository.sumAmountByVendorIdAndStatus(vid, InvoiceStatus.PENDING_APPROVAL))
+                    .totalReworkAmount(invoiceRepository.sumAmountByVendorIdAndStatus(vid, InvoiceStatus.REWORK_REQUIRED))
                     .totalApprovedAmount(invoiceRepository.sumAmountByVendorIdAndStatus(vid, InvoiceStatus.APPROVED))
                     .totalPaidAmount(invoiceRepository.sumAmountByVendorIdAndStatus(vid, InvoiceStatus.PAID))
                     .build();
@@ -276,9 +305,12 @@ public class InvoiceService {
                     .totalInvoices(invoiceRepository.countByTenantId(tenantId))
                     .draft(invoiceRepository.countByTenantIdAndStatus(tenantId, InvoiceStatus.DRAFT))
                     .pendingApproval(invoiceRepository.countByTenantIdAndStatus(tenantId, InvoiceStatus.PENDING_APPROVAL))
+                    .reworkRequired(invoiceRepository.countByTenantIdAndStatus(tenantId, InvoiceStatus.REWORK_REQUIRED))
                     .approved(invoiceRepository.countByTenantIdAndStatus(tenantId, InvoiceStatus.APPROVED))
                     .rejected(invoiceRepository.countByTenantIdAndStatus(tenantId, InvoiceStatus.REJECTED))
                     .paid(invoiceRepository.countByTenantIdAndStatus(tenantId, InvoiceStatus.PAID))
+                    .totalPendingAmount(invoiceRepository.sumAmountByTenantIdAndStatus(tenantId, InvoiceStatus.PENDING_APPROVAL))
+                    .totalReworkAmount(invoiceRepository.sumAmountByTenantIdAndStatus(tenantId, InvoiceStatus.REWORK_REQUIRED))
                     .totalApprovedAmount(invoiceRepository.sumAmountByTenantIdAndStatus(tenantId, InvoiceStatus.APPROVED))
                     .totalPaidAmount(invoiceRepository.sumAmountByTenantIdAndStatus(tenantId, InvoiceStatus.PAID))
                     .build();
@@ -289,9 +321,12 @@ public class InvoiceService {
                 .totalInvoices(invoiceRepository.count())
                 .draft(invoiceRepository.countByStatus(InvoiceStatus.DRAFT))
                 .pendingApproval(invoiceRepository.countByStatus(InvoiceStatus.PENDING_APPROVAL))
+                .reworkRequired(invoiceRepository.countByStatus(InvoiceStatus.REWORK_REQUIRED))
                 .approved(invoiceRepository.countByStatus(InvoiceStatus.APPROVED))
                 .rejected(invoiceRepository.countByStatus(InvoiceStatus.REJECTED))
                 .paid(invoiceRepository.countByStatus(InvoiceStatus.PAID))
+                .totalPendingAmount(invoiceRepository.sumAmountByStatus(InvoiceStatus.PENDING_APPROVAL))
+                .totalReworkAmount(invoiceRepository.sumAmountByStatus(InvoiceStatus.REWORK_REQUIRED))
                 .totalApprovedAmount(invoiceRepository.sumAmountByStatus(InvoiceStatus.APPROVED))
                 .totalPaidAmount(invoiceRepository.sumAmountByStatus(InvoiceStatus.PAID))
                 .build();
@@ -301,7 +336,7 @@ public class InvoiceService {
     public ExpenseSummaryDto getExpenseSummary() {
         UUID tenantId = TenantContext.get();
         List<InvoiceStatus> unapprovedStatuses = Arrays.asList(
-                InvoiceStatus.DRAFT, InvoiceStatus.PENDING_APPROVAL, InvoiceStatus.REJECTED);
+                InvoiceStatus.DRAFT, InvoiceStatus.PENDING_APPROVAL, InvoiceStatus.REWORK_REQUIRED, InvoiceStatus.REJECTED);
 
         List<Invoice> allInvoices = (tenantId != null)
                 ? invoiceRepository.findByTenantId(tenantId)
@@ -400,7 +435,7 @@ public class InvoiceService {
         Integer totalApprovalSteps = null;
 
         if (i.getWorkflowId() != null && i.getCurrentApprovalStep() != null
-                && i.getStatus() == InvoiceStatus.PENDING_APPROVAL) {
+                && (i.getStatus() == InvoiceStatus.PENDING_APPROVAL || i.getStatus() == InvoiceStatus.REWORK_REQUIRED)) {
             totalApprovalSteps = workflowService.getTotalLevels(i.getWorkflowId());
             var levelOpt = workflowService.getLevel(i.getWorkflowId(), i.getCurrentApprovalStep());
             if (levelOpt.isPresent()) {

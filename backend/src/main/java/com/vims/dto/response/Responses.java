@@ -125,9 +125,12 @@ public class Responses {
         private long totalInvoices;
         private long draft;
         private long pendingApproval;
+        private long reworkRequired;
         private long approved;
         private long rejected;
         private long paid;
+        private BigDecimal totalPendingAmount;
+        private BigDecimal totalReworkAmount;
         private BigDecimal totalApprovedAmount;
         private BigDecimal totalPaidAmount;
     }

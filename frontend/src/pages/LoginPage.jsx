@@ -17,17 +17,24 @@ function NatsuDragneel({ mousePos }) {
   const [t, setT]  = useState({ x: 0, y: 0 });
 
   useEffect(() => {
-    const onMove = e => {
+    const updateTarget = (clientX, clientY) => {
       if (!ref.current) return;
       const r  = ref.current.getBoundingClientRect();
       const hx = r.left + r.width  / 2;
       const hy = r.top  + r.height * 0.21;
       targetRef.current = {
-        x: Math.max(-1, Math.min(1, (e.clientX - hx) / 420)),
-        y: Math.max(-1, Math.min(1, (e.clientY - hy) / 320)),
+        x: Math.max(-1, Math.min(1, (clientX - hx) / 420)),
+        y: Math.max(-1, Math.min(1, (clientY - hy) / 320)),
       };
     };
+
+    const onMove  = e => updateTarget(e.clientX, e.clientY);
+    const onTouch = e => {
+      if (e.touches.length) updateTarget(e.touches[0].clientX, e.touches[0].clientY);
+    };
+
     window.addEventListener('mousemove', onMove);
+    window.addEventListener('touchmove', onTouch, { passive: true });
 
     const tick = () => {
       const L = 0.10;
@@ -40,6 +47,7 @@ function NatsuDragneel({ mousePos }) {
 
     return () => {
       window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('touchmove', onTouch);
       cancelAnimationFrame(rafRef.current);
     };
   }, []);
@@ -66,7 +74,8 @@ function NatsuDragneel({ mousePos }) {
     <div
       ref={ref}
       style={{
-        width: '260px',
+        width: '100%',
+        maxWidth: '260px',
         userSelect: 'none',
         pointerEvents: 'none',
         animation: 'floatChar 4s ease-in-out infinite',
@@ -291,13 +300,6 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   const [error, setError]     = useState('');
-  const [mousePos, setMousePos] = useState(null);
-
-  useEffect(() => {
-    const h = e => setMousePos({ x: e.clientX, y: e.clientY });
-    window.addEventListener('mousemove', h);
-    return () => window.removeEventListener('mousemove', h);
-  }, []);
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -352,15 +354,16 @@ export default function LoginPage() {
           borderRadius:'50%', background:'radial-gradient(circle,rgba(220,40,80,.13) 0%,transparent 70%)',
           pointerEvents:'none' }} />
 
-        {/* Centred two-column layout */}
-        <div style={{
-          display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-          gap: '48px', width: '100%', maxWidth: '860px',
-          position: 'relative', zIndex: 10,
-        }}>
+        {/* Responsive layout: stacked on mobile, side-by-side on desktop */}
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-center items-center gap-4 sm:gap-12 w-full sm:max-w-4xl relative z-10">
+
+          {/* Natsu on mobile — appears above the card, smaller */}
+          <div className="sm:hidden w-32 flex-shrink-0">
+            <NatsuDragneel />
+          </div>
 
           {/* Login card */}
-          <div style={{ flex: '0 0 400px' }}>
+          <div className="w-full sm:w-[400px] flex-shrink-0">
             <div style={{ textAlign: 'center', marginBottom: '1.8rem' }}>
 
               {/* 3SC Brand Logo */}
@@ -385,7 +388,7 @@ export default function LoginPage() {
 
             <div style={{
               background: 'rgba(255,255,255,.97)', borderRadius: '20px',
-              padding: '2.2rem', animation: 'cardGlow 4s ease-in-out infinite',
+              padding: 'clamp(1.2rem, 4vw, 2.2rem)', animation: 'cardGlow 4s ease-in-out infinite',
             }}>
               <h2 style={{ fontSize: '1.2rem', fontWeight: 700, color: '#1a1a2e', marginBottom: '1.4rem' }}>
                 Sign in to your account
@@ -439,8 +442,8 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Natsu */}
-          <div style={{ flex: '0 0 260px', alignSelf: 'flex-end' }}>
+          {/* Natsu on desktop — beside the card */}
+          <div className="hidden sm:block flex-shrink-0 self-end" style={{ width: '220px' }}>
             <NatsuDragneel mousePos={mousePos} />
           </div>
 

@@ -40,11 +40,12 @@ function StatCard({ label, value, icon: Icon, accent, onClick, sub }) {
 // ── VENDOR dashboard ────────────────────────────────────────────────────────
 function VendorDashboard({ data, navigate }) {
   const cards = [
-    { label: 'Pending Payouts', value: data.pendingApproval, icon: ClockIcon, accent: 'amber', path: '/invoices?status=PENDING_APPROVAL' },
+    { label: 'Pending Approval', value: data.pendingApproval, icon: ClockIcon, accent: 'amber', path: '/invoices?status=PENDING_APPROVAL' },
     { label: 'Total Submitted', value: data.totalInvoices, icon: DocumentTextIcon, accent: 'blue', path: '/invoices' },
-    { label: 'In Progress', value: data.pendingApproval + data.draft, icon: ArrowTrendingUpIcon, accent: 'slate', path: '/invoices' },
+    { label: 'Approved (Unpaid)', value: data.approved, icon: CheckCircleIcon, accent: 'emerald', path: '/invoices?status=APPROVED' },
     { label: 'Paid', value: data.paid, icon: BanknotesIcon, accent: 'purple', path: '/invoices?status=PAID' },
   ];
+  const pendingAmt = (Number(data.totalPendingAmount) || 0) + (Number(data.totalReworkAmount) || 0);
   return (
     <div className="space-y-6">
       <div>
@@ -54,13 +55,22 @@ function VendorDashboard({ data, navigate }) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {cards.map(c => <StatCard key={c.label} {...c} onClick={() => navigate(c.path)}/>)}
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="stat-card stat-card-amber">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-amber-50 text-amber-600"><ClockIcon className="h-5 w-5"/></div>
+            <div>
+              <div className="text-xl font-bold text-gray-900">{fmt(pendingAmt)}</div>
+              <div className="text-xs text-gray-500">Pending Approval Amount</div>
+            </div>
+          </div>
+        </div>
         <div className="stat-card stat-card-emerald">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600"><CheckCircleIcon className="h-5 w-5"/></div>
             <div>
               <div className="text-xl font-bold text-gray-900">{fmt(data.totalApprovedAmount)}</div>
-              <div className="text-xs text-gray-500">Approved Amount</div>
+              <div className="text-xs text-gray-500">Approved (Unpaid) Amount</div>
             </div>
           </div>
         </div>
@@ -87,11 +97,12 @@ function VendorDashboard({ data, navigate }) {
 
 // ── FINANCE / CFO dashboard ─────────────────────────────────────────────────
 function FinanceDashboard({ data, navigate, role }) {
+  const pendingAmt = (Number(data.totalPendingAmount) || 0) + (Number(data.totalReworkAmount) || 0);
   const cards = [
-    { label: 'Unapproved Spend', value: fmt(data.totalPaidAmount == null ? 0 : (data.totalApprovedAmount || 0)), icon: ExclamationTriangleIcon, accent: 'amber', path: '/finance-hub' },
-    { label: 'Total Approved', value: fmt(data.totalApprovedAmount), icon: CheckCircleIcon, accent: 'emerald', path: '/invoices?status=APPROVED' },
+    { label: 'Pending Approval Amount', value: fmt(pendingAmt), icon: ExclamationTriangleIcon, accent: 'amber', path: '/invoices?status=PENDING_APPROVAL' },
+    { label: 'Approved (Unpaid)', value: fmt(data.totalApprovedAmount), icon: CheckCircleIcon, accent: 'emerald', path: '/invoices?status=APPROVED' },
     { label: 'Total Paid', value: fmt(data.totalPaidAmount), icon: BanknotesIcon, accent: 'purple', path: '/invoices?status=PAID' },
-    { label: 'Pending Approval', value: data.pendingApproval, icon: ClockIcon, accent: 'blue', path: '/invoices?status=PENDING_APPROVAL' },
+    { label: 'Pending Approval Count', value: (data.pendingApproval || 0) + (data.reworkRequired || 0), icon: ClockIcon, accent: 'blue', path: '/finance-hub' },
   ];
   return (
     <div className="space-y-6">
@@ -117,10 +128,11 @@ function FinanceDashboard({ data, navigate, role }) {
 
 // ── Generic dashboard ───────────────────────────────────────────────────────
 function GenericDashboard({ data, navigate, user }) {
+  const pendingAmt = (Number(data.totalPendingAmount) || 0) + (Number(data.totalReworkAmount) || 0);
   const stats = [
     { label: 'Total Invoices', value: data.totalInvoices, icon: DocumentTextIcon, accent: 'blue', path: '/invoices' },
-    { label: 'Pending Approval', value: data.pendingApproval, icon: ClockIcon, accent: 'amber', path: '/invoices?status=PENDING_APPROVAL' },
-    { label: 'Approved', value: data.approved, icon: CheckCircleIcon, accent: 'emerald', path: '/invoices?status=APPROVED' },
+    { label: 'Pending Approval', value: (data.pendingApproval || 0) + (data.reworkRequired || 0), icon: ClockIcon, accent: 'amber', path: '/invoices?status=PENDING_APPROVAL' },
+    { label: 'Approved (Unpaid)', value: data.approved, icon: CheckCircleIcon, accent: 'emerald', path: '/invoices?status=APPROVED' },
     { label: 'Rejected', value: data.rejected, icon: XCircleIcon, accent: 'red', path: '/invoices?status=REJECTED' },
     { label: 'Paid', value: data.paid, icon: CurrencyRupeeIcon, accent: 'purple', path: '/invoices?status=PAID' },
   ];
@@ -128,6 +140,7 @@ function GenericDashboard({ data, navigate, user }) {
   const pieData = [
     { name: 'Draft', value: data.draft },
     { name: 'Pending', value: data.pendingApproval },
+    { name: 'Rework', value: data.reworkRequired || 0 },
     { name: 'Approved', value: data.approved },
     { name: 'Rejected', value: data.rejected },
     { name: 'Paid', value: data.paid },
@@ -136,6 +149,7 @@ function GenericDashboard({ data, navigate, user }) {
   const barData = [
     { stage: 'Draft', count: data.draft },
     { stage: 'Pending', count: data.pendingApproval },
+    { stage: 'Rework', count: data.reworkRequired || 0 },
     { stage: 'Approved', count: data.approved },
     { stage: 'Rejected', count: data.rejected },
     { stage: 'Paid', count: data.paid },
@@ -150,13 +164,22 @@ function GenericDashboard({ data, navigate, user }) {
       <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
         {stats.map(s => <StatCard key={s.label} {...s} onClick={() => navigate(s.path)}/>)}
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="stat-card stat-card-amber">
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-amber-50 text-amber-600"><ClockIcon className="h-5 w-5"/></div>
+            <div>
+              <div className="text-xl font-bold text-gray-900">{fmt(pendingAmt)}</div>
+              <div className="text-xs text-gray-500">Pending Approval Amount</div>
+            </div>
+          </div>
+        </div>
         <div className="stat-card stat-card-emerald">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-emerald-50 text-emerald-600"><CheckCircleIcon className="h-5 w-5"/></div>
             <div>
               <div className="text-xl font-bold text-gray-900">{fmt(data.totalApprovedAmount)}</div>
-              <div className="text-xs text-gray-500">Approved Amount</div>
+              <div className="text-xs text-gray-500">Approved (Unpaid) Amount</div>
             </div>
           </div>
         </div>

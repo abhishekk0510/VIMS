@@ -14,6 +14,7 @@ export const invoiceService = {
   getById:   id => api.get(`/invoices/${id}`),
   dashboard: () => api.get('/invoices/dashboard'),
   download:  id => api.get(`/invoices/${id}/download`, { responseType: 'blob' }),
+  preview:   id => api.get(`/invoices/${id}/preview`,  { responseType: 'blob' }),
 };
 
 export const reportService = {

@@ -5,7 +5,7 @@ import { useAuth } from '../context/AuthContext';
 import { MagnifyingGlassIcon, FunnelIcon } from '@heroicons/react/24/outline';
 import { format } from 'date-fns';
 
-const STATUSES = ['', 'DRAFT','PENDING_APPROVAL','APPROVED','REJECTED','PAID'];
+const STATUSES = ['', 'DRAFT','PENDING_APPROVAL','REWORK_REQUIRED','APPROVED','REJECTED','PAID'];
 
 function StatusBadge({ status }) {
   return <span className={`badge-${status.toLowerCase()}`}>{status.replace('_',' ')}</span>;

@@ -4,7 +4,7 @@ import { invoiceService, downloadBlob } from '../services/invoiceService';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
 import { format } from 'date-fns';
-import { CheckCircleIcon, XCircleIcon, CurrencyRupeeIcon, ArrowDownTrayIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
+import { CheckCircleIcon, XCircleIcon, CurrencyRupeeIcon, ArrowDownTrayIcon, ArrowLeftIcon, EyeIcon, XMarkIcon } from '@heroicons/react/24/outline';
 
 // Build stages dynamically from the workflow levels returned by the API.
 // Falls back to a generic "Step N" label if level names aren't available.
@@ -45,11 +45,12 @@ function RiskBar({ score }) {
 
 // Dynamic approval stage tracker — uses workflow levels from the API
 function ApprovalStageTracker({ invoice }) {
-  if (!['PENDING_APPROVAL', 'APPROVED'].includes(invoice.status)) return null;
+  if (!['PENDING_APPROVAL', 'REWORK_REQUIRED', 'APPROVED'].includes(invoice.status)) return null;
 
   const stages = buildStages(invoice);
   const isApproved = invoice.status === 'APPROVED';
-  const isPending  = invoice.status === 'PENDING_APPROVAL';
+  const isPending  = invoice.status === 'PENDING_APPROVAL' || invoice.status === 'REWORK_REQUIRED';
+  const isRework   = invoice.status === 'REWORK_REQUIRED';
 
   // activeVisualStep: index into stages[]
   // stages[0] = Submitted, stages[1..N] = workflow levels, stages[N+1] = Approved
@@ -110,10 +111,17 @@ function ApprovalStageTracker({ invoice }) {
         </div>
       </div>
 
-      {isPending && invoice.currentStepName && (
+      {isPending && !isRework && invoice.currentStepName && (
         <p className="text-xs text-blue-700 mt-4 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2">
           Awaiting <strong>{invoice.currentStepName}</strong>
           {invoice.currentStepRole && <span className="text-blue-500"> ({invoice.currentStepRole.replace(/_/g, ' ')})</span>}
+        </p>
+      )}
+      {isRework && invoice.currentStepName && (
+        <p className="text-xs text-orange-700 mt-4 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2 flex items-center gap-1.5">
+          <span>🔄</span>
+          Sent back for rework — awaiting <strong>{invoice.currentStepName}</strong>
+          {invoice.currentStepRole && <span className="text-orange-500"> ({invoice.currentStepRole.replace(/_/g, ' ')})</span>}
         </p>
       )}
       {isApproved && (
@@ -241,6 +249,9 @@ export default function InvoiceDetailPage() {
   const [remarks, setRemarks] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewType, setPreviewType] = useState(null);
   const [activeTab, setActiveTab] = useState('details');
 
   const fetchInvoice = () => {
@@ -294,6 +305,24 @@ export default function InvoiceDetailPage() {
     finally { setDownloading(false); }
   };
 
+  const handlePreview = async () => {
+    setPreviewing(true);
+    try {
+      const res = await invoiceService.preview(id);
+      const blob = new Blob([res.data], { type: res.headers['content-type'] || 'application/octet-stream' });
+      const url = window.URL.createObjectURL(blob);
+      setPreviewUrl(url);
+      setPreviewType(blob.type);
+    } catch { toast.error('Preview failed'); }
+    finally { setPreviewing(false); }
+  };
+
+  const closePreview = () => {
+    if (previewUrl) window.URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+    setPreviewType(null);
+  };
+
   if (loading) return (
     <div className="flex justify-center mt-20">
       <div className="animate-spin h-10 w-10 rounded-full border-b-2 border-blue-600"/>
@@ -302,7 +331,7 @@ export default function InvoiceDetailPage() {
   if (!invoice) return <div className="text-center mt-20 text-gray-400">Invoice not found</div>;
 
   const canSubmit  = (user?.role === 'VENDOR' || user?.role === 'ADMIN') && (invoice.status === 'DRAFT' || invoice.status === 'REJECTED');
-  const canApprove = invoice.status === 'PENDING_APPROVAL' && (
+  const canApprove = (invoice.status === 'PENDING_APPROVAL' || invoice.status === 'REWORK_REQUIRED') && (
     user?.role === 'ADMIN' ||
     (invoice.currentStepRole != null && String(user?.role) === String(invoice.currentStepRole))
   );
@@ -399,23 +428,27 @@ export default function InvoiceDetailPage() {
                     const isIntermediateOk  = h.statusAfter === 'PENDING_APPROVAL' && h.role !== 'VENDOR';
                     const isFinalApproved   = h.statusAfter === 'APPROVED';
                     const isRejected        = h.statusAfter === 'REJECTED';
+                    const isRework          = h.statusAfter === 'REWORK_REQUIRED';
                     const isPaid            = h.statusAfter === 'PAID';
 
                     const dotColor = isFinalApproved || isPaid ? 'bg-emerald-500'
                       : isRejected ? 'bg-red-500'
+                      : isRework ? 'bg-orange-500'
                       : isIntermediateOk ? 'bg-emerald-400'
                       : 'bg-blue-500';
 
                     const actionLabel = isSubmission     ? 'Submitted for approval'
                       : isIntermediateOk ? 'Level approved — moved to next step'
                       : isFinalApproved  ? 'Fully approved'
-                      : isRejected       ? 'Rejected'
+                      : isRejected       ? 'Rejected — vendor must resubmit'
+                      : isRework         ? 'Sent back for rework (Operations)'
                       : isPaid           ? 'Payment marked'
                       : h.statusAfter.replace(/_/g, ' ');
 
                     const labelColor = isFinalApproved || isIntermediateOk || isPaid
                       ? 'text-emerald-700'
                       : isRejected ? 'text-red-600'
+                      : isRework ? 'text-orange-600'
                       : 'text-blue-700';
 
                     return (
@@ -523,15 +556,61 @@ export default function InvoiceDetailPage() {
                 <span>📎</span>
                 <span className="truncate text-gray-700 flex-1 text-xs">{invoice.fileName}</span>
               </div>
-              <button onClick={handleDownload} disabled={downloading}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition disabled:opacity-50">
-                <ArrowDownTrayIcon className="h-4 w-4"/>
-                {downloading ? 'Downloading...' : 'Download File'}
-              </button>
+              <div className="flex gap-2">
+                <button onClick={handlePreview} disabled={previewing}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-blue-300 rounded-lg text-sm font-medium text-blue-700 hover:bg-blue-50 transition disabled:opacity-50">
+                  <EyeIcon className="h-4 w-4"/>
+                  {previewing ? 'Loading...' : 'Preview'}
+                </button>
+                <button onClick={handleDownload} disabled={downloading}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition disabled:opacity-50">
+                  <ArrowDownTrayIcon className="h-4 w-4"/>
+                  {downloading ? '...' : 'Download'}
+                </button>
+              </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Document Preview Modal */}
+      {previewUrl && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col" style={{ height: '90vh' }}>
+            <div className="flex items-center justify-between p-4 border-b">
+              <div className="flex items-center gap-2">
+                <EyeIcon className="h-5 w-5 text-blue-600"/>
+                <h3 className="text-base font-bold text-gray-900">{invoice.fileName}</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={handleDownload} disabled={downloading}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition">
+                  <ArrowDownTrayIcon className="h-4 w-4"/> Download
+                </button>
+                <button onClick={closePreview}
+                  className="p-1.5 rounded-lg hover:bg-gray-100 transition text-gray-500">
+                  <XMarkIcon className="h-5 w-5"/>
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 overflow-hidden rounded-b-2xl">
+              {previewType?.startsWith('image/') ? (
+                <div className="w-full h-full flex items-center justify-center bg-gray-50 p-4 overflow-auto">
+                  <img src={previewUrl} alt={invoice.fileName} className="max-w-full max-h-full object-contain rounded-lg shadow"/>
+                </div>
+              ) : previewType === 'application/pdf' || invoice.fileName?.toLowerCase().endsWith('.pdf') ? (
+                <iframe src={previewUrl} title={invoice.fileName} className="w-full h-full border-0 rounded-b-2xl"/>
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 gap-4">
+                  <span className="text-5xl">📄</span>
+                  <p className="text-sm">Preview not available for this file type.</p>
+                  <button onClick={handleDownload} className="btn-primary">Download to View</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Approval Modal */}
       {approvalModal && (

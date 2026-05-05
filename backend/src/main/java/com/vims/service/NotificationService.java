@@ -120,6 +120,27 @@ public class NotificationService {
         }
     }
 
+    /** Called when a higher-level approver (e.g. Finance) rejects — sends back to Operations for rework */
+    @Async
+    public void notifyReworkRequired(Invoice invoice, String rejectedByName, WorkflowLevel rejectedAtLevel, WorkflowLevel reworkLevel, String remarks) {
+        try {
+            String subject = "🔄 Action Required: Invoice Needs Rework — " + invoice.getInvoiceNumber();
+            String body = buildApprovalRequestEmail(
+                    reworkLevel.getLevelName(),
+                    invoice,
+                    invoice.getVendor().getName(),
+                    "Invoice <strong>" + invoice.getInvoiceNumber() + "</strong> was returned for rework by <strong>"
+                            + rejectedByName + "</strong> at the <strong>" + rejectedAtLevel.getLevelName() + "</strong> stage.",
+                    "This invoice requires review and corrective action at the <strong>" + reworkLevel.getLevelName()
+                            + "</strong> stage before it can proceed further in the approval workflow.",
+                    remarks
+            );
+            sendToRole(reworkLevel.getApproverRole(), invoice.getTenantId(), subject, body);
+        } catch (Exception e) {
+            log.warn("Failed to send rework notification for {}: {}", invoice.getInvoiceNumber(), e.getMessage());
+        }
+    }
+
     /** Called when finance marks invoice as paid */
     @Async
     public void notifyPaymentDone(Invoice invoice, String vendorName, String vendorEmail, String processedBy) {

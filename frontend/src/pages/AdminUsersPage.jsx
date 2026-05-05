@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { adminService, tenantService } from '../services/invoiceService';
 import { useAuth } from '../context/AuthContext';
 import toast from 'react-hot-toast';
-import { PlusIcon, LockOpenIcon } from '@heroicons/react/24/outline';
+import { PlusIcon, LockOpenIcon, PencilSquareIcon } from '@heroicons/react/24/outline';
 
 const ROLES = ['VENDOR','OPERATIONS','FINANCE','CLIENT','ADMIN','DEPT_HEAD','CFO','SUPER_ADMIN'];
 const VENDOR_TYPES = ['General', 'MSME', 'Government', 'Startup', 'Other'];
@@ -63,10 +63,46 @@ export default function AdminUsersPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
+  const [editingUser, setEditingUser] = useState(null);
+  const [editForm, setEditForm] = useState({ name: '', phone: '' });
+  const [editErrors, setEditErrors] = useState({});
 
   const set = (k, v) => {
     setForm(p => ({ ...p, [k]: v }));
     setErrors(p => ({ ...p, [k]: undefined }));
+  };
+
+  const setEdit = (k, v) => {
+    setEditForm(p => ({ ...p, [k]: v }));
+    setEditErrors(p => ({ ...p, [k]: undefined }));
+  };
+
+  const validateEdit = () => {
+    const e = {};
+    if (!editForm.name.trim() || editForm.name.length < 2) e.name = 'Name must be at least 2 characters';
+    if (editForm.phone && !PHONE_RE.test(editForm.phone)) e.phone = 'Enter a valid 10-digit Indian mobile number';
+    setEditErrors(e);
+    return Object.keys(e).length === 0;
+  };
+
+  const openEdit = u => {
+    setEditingUser(u);
+    setEditForm({ name: u.name, phone: u.phone || '' });
+    setEditErrors({});
+  };
+
+  const handleEdit = async e => {
+    e.preventDefault();
+    if (!validateEdit()) return;
+    setSaving(true);
+    try {
+      await adminService.updateUser(editingUser.id, editForm);
+      toast.success('User updated successfully');
+      setEditingUser(null);
+      fetchUsers();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to update user');
+    } finally { setSaving(false); }
   };
 
   const validate = () => {

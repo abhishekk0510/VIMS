@@ -10,6 +10,7 @@ const fmt = n => n == null ? '₹0' : `₹${Number(n).toLocaleString('en-IN', { 
 const STATUS_TABS = [
   { key: 'ALL',              label: 'All' },
   { key: 'PENDING_APPROVAL', label: 'Pending Approval' },
+  { key: 'REWORK_REQUIRED',  label: 'Rework Required' },
   { key: 'APPROVED',         label: 'Approved' },
   { key: 'DRAFT',            label: 'Draft' },
   { key: 'REJECTED',         label: 'Rejected' },
@@ -19,6 +20,7 @@ const STATUS_TABS = [
 const STATUS_BADGE = {
   DRAFT:            'badge-draft',
   PENDING_APPROVAL: 'badge-pending_approval',
+  REWORK_REQUIRED:  'badge-rework_required',
   APPROVED:         'badge-approved',
   REJECTED:         'badge-rejected',
   PAID:             'badge-paid',
@@ -74,7 +76,7 @@ export default function FinanceHubPage() {
             <div>
               <div className="text-xl font-bold text-gray-900">{fmt(summary?.unapprovedSpendTotal)}</div>
               <div className="text-xs text-gray-500 mt-0.5 font-medium">Unapproved Spend</div>
-              <div className="text-xs text-amber-600 mt-1">Pending + Draft + Rejected</div>
+              <div className="text-xs text-amber-600 mt-1">Pending + Draft + Rework + Rejected</div>
             </div>
           </div>
         </div>

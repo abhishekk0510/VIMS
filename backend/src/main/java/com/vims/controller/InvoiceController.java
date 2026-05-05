@@ -83,6 +83,19 @@ public class InvoiceController {
                 .body(download.resource());
     }
 
+    @GetMapping("/{id}/preview")
+    public ResponseEntity<Resource> preview(
+            @AuthenticationPrincipal UserDetails user,
+            @PathVariable UUID id) {
+        FileDownload download = invoiceService.downloadFile(user.getUsername(), id);
+        String safeFilename = download.filename().replaceAll("[^a-zA-Z0-9._-]", "_");
+        String contentType = invoiceService.getFileContentType(user.getUsername(), id);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=\"" + safeFilename + "\"")
+                .contentType(MediaType.parseMediaType(contentType))
+                .body(download.resource());
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<InvoiceDto>> getById(
             @AuthenticationPrincipal UserDetails user,
