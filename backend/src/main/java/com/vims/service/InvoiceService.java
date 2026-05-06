@@ -377,7 +377,9 @@ public class InvoiceService {
     // ─── Private helpers ────────────────────────────────────────────────────────
 
     private void saveFile(Invoice invoice, MultipartFile file) {
-        String contentType = file.getContentType();
+        String raw = file.getContentType();
+        // Normalize: strip params like "; charset=utf-8", default to octet-stream if null
+        String contentType = (raw != null ? raw.split(";")[0].trim() : "application/octet-stream");
         if (!Arrays.asList(allowedTypes.split(",")).contains(contentType)) {
             throw new BusinessException("File type not allowed: " + contentType);
         }
@@ -387,7 +389,7 @@ public class InvoiceService {
             invoice.setFileName(file.getOriginalFilename());
             invoice.setFileType(contentType);
         } catch (IOException e) {
-            throw new BusinessException("File upload failed");
+            throw new BusinessException("File upload failed: " + e.getMessage());
         }
     }
 

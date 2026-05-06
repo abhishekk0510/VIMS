@@ -5,7 +5,10 @@ export const invoiceService = {
     const form = new FormData();
     form.append('invoice', new Blob([JSON.stringify(invoiceData)], { type: 'application/json' }));
     if (file) form.append('file', file);
-    return api.post('/invoices', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+    // Do NOT set Content-Type manually — axios auto-sets multipart/form-data WITH the
+    // correct boundary when it detects a FormData object. Manual override strips the boundary,
+    // causing Spring Boot to fail parsing the multipart body.
+    return api.post('/invoices', form);
   },
   submit:    id => api.post(`/invoices/${id}/submit`),
   approve:   (id, data) => api.post(`/invoices/${id}/approval`, data),
