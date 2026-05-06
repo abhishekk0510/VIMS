@@ -444,7 +444,7 @@ export default function LoginPage() {
 
           {/* Natsu on desktop — beside the card */}
           <div className="hidden sm:block flex-shrink-0 self-end" style={{ width: '220px' }}>
-            <NatsuDragneel mousePos={mousePos} />
+            <NatsuDragneel />
           </div>
 
         </div>
