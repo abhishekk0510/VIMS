@@ -4,6 +4,8 @@ import com.vims.enums.Role;
 import jakarta.validation.constraints.*;
 import lombok.Data;
 
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public class UserRequests {
@@ -51,6 +53,17 @@ public class UserRequests {
         @Pattern(regexp = "^(\\+91)?[6-9]\\d{9}$", message = "Phone must be a valid 10-digit Indian mobile number (optionally prefixed with +91)")
         private String phone;
         private Boolean enabled;
+    }
+
+    @Data
+    public static class AssignTenantsRequest {
+        private List<UUID> tenantIds;
+    }
+
+    @Data
+    public static class UpdateModulePermissionsRequest {
+        // moduleKey -> enabled (true=grant, false=revoke)
+        private Map<String, Boolean> permissions;
     }
 
     @Data

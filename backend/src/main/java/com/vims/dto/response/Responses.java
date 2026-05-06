@@ -47,6 +47,19 @@ public class Responses {
         private boolean enabled;
         private UUID tenantId;
         private String tenantName;
+        // Multi-tenant access
+        private List<UUID> accessibleTenantIds;
+        private List<String> accessibleTenantNames;
+        // Dynamic module permissions (effective = role defaults + admin overrides)
+        private List<String> modules;
+    }
+
+    @Data @Builder
+    public static class ModulePermissionDetail {
+        private String key;
+        private boolean defaultEnabled;
+        private Boolean override;
+        private boolean effective;
     }
 
     @Data @Builder

@@ -16,8 +16,8 @@ import CfoCommandPage from './pages/CfoCommandPage';
 import TenantsPage from './pages/TenantsPage';
 import Layout from './components/common/Layout';
 
-function PrivateRoute({ children, roles }) {
-  const { user, loading } = useAuth();
+function PrivateRoute({ children, module: moduleKey }) {
+  const { user, loading, hasModule } = useAuth();
   if (loading) return (
     <div className="flex h-screen items-center justify-center bg-slate-900">
       <div className="flex flex-col items-center gap-3">
@@ -27,7 +27,8 @@ function PrivateRoute({ children, roles }) {
     </div>
   );
   if (!user) return <Navigate to="/login" replace />;
-  if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;
+  // If a module key is specified, check dynamic permission
+  if (moduleKey && !hasModule(moduleKey)) return <Navigate to="/" replace />;
   return children;
 }
 
@@ -38,16 +39,16 @@ function AppRoutes() {
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginPage />} />
       <Route path="/" element={<PrivateRoute><Layout /></PrivateRoute>}>
         <Route index element={<DashboardPage />} />
-        <Route path="invoices" element={<InvoiceListPage />} />
-        <Route path="invoices/new" element={<PrivateRoute roles={['VENDOR','ADMIN']}><CreateInvoicePage /></PrivateRoute>} />
+        <Route path="invoices" element={<PrivateRoute module="INVOICES"><InvoiceListPage /></PrivateRoute>} />
+        <Route path="invoices/new" element={<PrivateRoute module="CREATE_INVOICE"><CreateInvoicePage /></PrivateRoute>} />
         <Route path="invoices/:id" element={<InvoiceDetailPage />} />
-        <Route path="reports" element={<PrivateRoute roles={['ADMIN','FINANCE','CFO','OPERATIONS']}><ReportsPage /></PrivateRoute>} />
-        <Route path="admin/users" element={<PrivateRoute roles={['ADMIN','SUPER_ADMIN']}><AdminUsersPage /></PrivateRoute>} />
-        <Route path="admin/workflows" element={<PrivateRoute roles={['ADMIN']}><WorkflowConfigPage /></PrivateRoute>} />
-        <Route path="audit" element={<PrivateRoute roles={['ADMIN','FINANCE','CFO','OPERATIONS','DEPT_HEAD']}><AuditRegistryPage /></PrivateRoute>} />
-        <Route path="finance-hub" element={<PrivateRoute roles={['ADMIN','FINANCE','CFO']}><FinanceHubPage /></PrivateRoute>} />
-        <Route path="cfo" element={<PrivateRoute roles={['ADMIN','CFO']}><CfoCommandPage /></PrivateRoute>} />
-        <Route path="tenants" element={<PrivateRoute roles={['SUPER_ADMIN']}><TenantsPage /></PrivateRoute>} />
+        <Route path="reports" element={<PrivateRoute module="REPORTS"><ReportsPage /></PrivateRoute>} />
+        <Route path="admin/users" element={<PrivateRoute module="USER_MANAGEMENT"><AdminUsersPage /></PrivateRoute>} />
+        <Route path="admin/workflows" element={<PrivateRoute module="WORKFLOW_CONFIG"><WorkflowConfigPage /></PrivateRoute>} />
+        <Route path="audit" element={<PrivateRoute module="AUDIT_REGISTRY"><AuditRegistryPage /></PrivateRoute>} />
+        <Route path="finance-hub" element={<PrivateRoute module="FINANCE_HUB"><FinanceHubPage /></PrivateRoute>} />
+        <Route path="cfo" element={<PrivateRoute module="CFO_COMMAND"><CfoCommandPage /></PrivateRoute>} />
+        <Route path="tenants" element={<PrivateRoute module="TENANT_MANAGEMENT"><TenantsPage /></PrivateRoute>} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -18,9 +18,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -31,9 +30,12 @@ public class AuthService {
     private final UserRepository userRepository;
     private final TenantRepository tenantRepository;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final UserTenantAccessRepository userTenantAccessRepository;
+    private final UserModulePermissionRepository modulePermissionRepository;
     private final JwtUtil jwtUtil;
     private final UserDetailsService userDetailsService;
     private final PasswordEncoder passwordEncoder;
+    private final UserService userService;
 
     @Value("${jwt.refresh.expiration.ms}")
     private long refreshExpirationMs;
@@ -122,6 +124,40 @@ public class AuthService {
     }
 
     @Transactional
+    public AuthResponse switchTenant(String email, UUID newTenantId) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new BusinessException("User not found"));
+
+        // Verify access: primary tenant or an additionally granted tenant
+        boolean hasAccess = newTenantId.equals(user.getTenantId()) ||
+                userTenantAccessRepository.existsByUserIdAndTenantId(user.getId(), newTenantId);
+        if (!hasAccess) throw new BusinessException("Access denied to this tenant");
+
+        Tenant tenant = tenantRepository.findById(newTenantId)
+                .orElseThrow(() -> new BusinessException("Tenant not found"));
+        if (!tenant.isActive()) throw new BusinessException("Tenant is not active");
+
+        UserDetails userDetails = userDetailsService.loadUserByUsername(email);
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("role", user.getRole().name());
+        claims.put("userId", user.getId().toString());
+        claims.put("tenantId", newTenantId.toString());
+        String newAccessToken = jwtUtil.generateToken(userDetails, claims);
+
+        // Build DTO reflecting the switched tenant context
+        UserDto switchedDto = userService.toDto(user);
+        // Override effective tenantId/name for this session
+        switchedDto.setTenantId(newTenantId);
+        switchedDto.setTenantName(tenant.getName());
+
+        return AuthResponse.builder()
+                .accessToken(newAccessToken)
+                .tokenType("Bearer")
+                .user(switchedDto)
+                .build();
+    }
+
+    @Transactional
     public void changePassword(String email, ChangePasswordRequest req) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new BusinessException("User not found"));
@@ -158,17 +194,6 @@ public class AuthService {
     }
 
     private UserDto toUserDto(User u) {
-        String tenantName = null;
-        if (u.getTenantId() != null) {
-            tenantName = tenantRepository.findById(u.getTenantId())
-                    .map(Tenant::getName).orElse(null);
-        }
-        return UserDto.builder()
-                .id(u.getId()).name(u.getName())
-                .email(u.getEmail()).role(u.getRole())
-                .enabled(u.isEnabled())
-                .tenantId(u.getTenantId())
-                .tenantName(tenantName)
-                .build();
+        return userService.toDto(u);
     }
 }

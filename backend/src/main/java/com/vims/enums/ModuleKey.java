@@ -1,0 +1,14 @@
+package com.vims.enums;
+
+public enum ModuleKey {
+    DASHBOARD,
+    INVOICES,
+    CREATE_INVOICE,
+    REPORTS,
+    FINANCE_HUB,
+    CFO_COMMAND,
+    AUDIT_REGISTRY,
+    USER_MANAGEMENT,
+    WORKFLOW_CONFIG,
+    TENANT_MANAGEMENT
+}

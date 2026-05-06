@@ -31,6 +31,13 @@ export const adminService = {
   getUsersByRole: role  => api.get(`/admin/users/role/${role}`),
   updateUser:     (id, data) => api.put(`/admin/users/${id}`, data),
   unlockUser:     id    => api.post(`/admin/users/${id}/unlock`),
+  // Multi-tenant access
+  assignTenants:  (id, tenantIds) => api.put(`/admin/users/${id}/tenants`, { tenantIds }),
+  // Module permissions
+  getPermissions:    id       => api.get(`/admin/users/${id}/permissions`),
+  updatePermissions: (id, permissions) => api.put(`/admin/users/${id}/permissions`, { permissions }),
+  resetPermission:   (id, moduleKey) => api.delete(`/admin/users/${id}/permissions/${moduleKey}`),
+  resetAllPermissions: id => api.delete(`/admin/users/${id}/permissions`),
 };
 
 export const workflowService = {

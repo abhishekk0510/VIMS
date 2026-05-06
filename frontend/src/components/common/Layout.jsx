@@ -6,61 +6,23 @@ import {
   HomeIcon, DocumentTextIcon, PlusCircleIcon, ChartBarIcon,
   UsersIcon, Bars3Icon, XMarkIcon, ArrowRightOnRectangleIcon,
   Cog6ToothIcon, ClipboardDocumentListIcon, BanknotesIcon,
-  BuildingLibraryIcon, ShieldCheckIcon, BuildingOffice2Icon
+  BuildingLibraryIcon, ShieldCheckIcon, BuildingOffice2Icon,
+  ChevronDownIcon,
 } from '@heroicons/react/24/outline';
 
-// Role-specific nav definitions
-const NAV_BY_ROLE = {
-  VENDOR: [
-    { to: '/', label: 'Dashboard', icon: HomeIcon },
-    { to: '/invoices', label: 'My Invoices', icon: DocumentTextIcon },
-    { to: '/invoices/new', label: 'New Invoice', icon: PlusCircleIcon },
-  ],
-  OPERATIONS: [
-    { to: '/', label: 'Dashboard', icon: HomeIcon },
-    { to: '/invoices', label: 'Invoices', icon: DocumentTextIcon },
-    { to: '/audit', label: 'Audit Registry', icon: ClipboardDocumentListIcon },
-  ],
-  DEPT_HEAD: [
-    { to: '/', label: 'Dashboard', icon: HomeIcon },
-    { to: '/invoices', label: 'Invoices', icon: DocumentTextIcon },
-    { to: '/audit', label: 'Audit Registry', icon: ClipboardDocumentListIcon },
-  ],
-  FINANCE: [
-    { to: '/', label: 'Dashboard', icon: HomeIcon },
-    { to: '/finance-hub', label: 'Finance Hub', icon: BanknotesIcon },
-    { to: '/invoices', label: 'Invoices', icon: DocumentTextIcon },
-    { to: '/audit', label: 'Audit Registry', icon: ClipboardDocumentListIcon },
-    { to: '/reports', label: 'Reports', icon: ChartBarIcon },
-  ],
-  CFO: [
-    { to: '/', label: 'Dashboard', icon: HomeIcon },
-    { to: '/cfo', label: 'CFO Command', icon: ShieldCheckIcon },
-    { to: '/finance-hub', label: 'Finance Hub', icon: BanknotesIcon },
-    { to: '/invoices', label: 'Invoices', icon: DocumentTextIcon },
-    { to: '/audit', label: 'Audit Registry', icon: ClipboardDocumentListIcon },
-    { to: '/reports', label: 'Reports', icon: ChartBarIcon },
-  ],
-  CLIENT: [
-    { to: '/', label: 'Dashboard', icon: HomeIcon },
-    { to: '/invoices', label: 'Invoices', icon: DocumentTextIcon },
-  ],
-  ADMIN: [
-    { to: '/', label: 'Dashboard', icon: HomeIcon },
-    { to: '/invoices', label: 'Invoices', icon: DocumentTextIcon },
-    { to: '/invoices/new', label: 'New Invoice', icon: PlusCircleIcon },
-    { to: '/finance-hub', label: 'Finance Hub', icon: BanknotesIcon },
-    { to: '/audit', label: 'Audit Registry', icon: ClipboardDocumentListIcon },
-    { to: '/reports', label: 'Reports', icon: ChartBarIcon },
-    { to: '/admin/users', label: 'User Management', icon: UsersIcon },
-    { to: '/admin/workflows', label: 'Workflow Config', icon: Cog6ToothIcon },
-  ],
-  SUPER_ADMIN: [
-    { to: '/', label: 'Dashboard', icon: HomeIcon },
-    { to: '/tenants', label: 'Tenant Management', icon: BuildingOffice2Icon },
-    { to: '/admin/users', label: 'User Management', icon: UsersIcon },
-  ],
-};
+// All possible nav items keyed by module
+const ALL_NAV_ITEMS = [
+  { module: 'DASHBOARD',         to: '/',                label: 'Dashboard',       icon: HomeIcon },
+  { module: 'INVOICES',          to: '/invoices',        label: 'Invoices',        icon: DocumentTextIcon },
+  { module: 'CREATE_INVOICE',    to: '/invoices/new',    label: 'New Invoice',     icon: PlusCircleIcon },
+  { module: 'FINANCE_HUB',       to: '/finance-hub',     label: 'Finance Hub',     icon: BanknotesIcon },
+  { module: 'CFO_COMMAND',       to: '/cfo',             label: 'CFO Command',     icon: ShieldCheckIcon },
+  { module: 'AUDIT_REGISTRY',    to: '/audit',           label: 'Audit Registry',  icon: ClipboardDocumentListIcon },
+  { module: 'REPORTS',           to: '/reports',         label: 'Reports',         icon: ChartBarIcon },
+  { module: 'USER_MANAGEMENT',   to: '/admin/users',     label: 'User Management', icon: UsersIcon },
+  { module: 'WORKFLOW_CONFIG',   to: '/admin/workflows', label: 'Workflow Config',  icon: Cog6ToothIcon },
+  { module: 'TENANT_MANAGEMENT', to: '/tenants',         label: 'Tenant Mgmt',     icon: BuildingOffice2Icon },
+];
 
 const ROLE_BADGE_COLORS = {
   ADMIN:       'bg-purple-500/20 text-purple-300 border-purple-500/30',
@@ -81,8 +43,42 @@ function getInitials(name) {
     : name.slice(0, 2).toUpperCase();
 }
 
+function TenantSwitcher({ accessibleTenants, currentTenantId, onSwitch }) {
+  const [open, setOpen] = useState(false);
+  if (accessibleTenants.length <= 1) return null;
+  const current = accessibleTenants.find(t => t.id === currentTenantId);
+
+  return (
+    <div className="relative mt-2">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between text-xs px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors"
+      >
+        <span className="truncate">{current?.name ?? 'Switch Tenant'}</span>
+        <ChevronDownIcon className={`h-3 w-3 flex-shrink-0 ml-1 transition-transform ${open ? 'rotate-180' : ''}`}/>
+      </button>
+      {open && (
+        <div className="absolute left-0 right-0 mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl z-50 overflow-hidden">
+          {accessibleTenants.map(t => (
+            <button
+              key={t.id}
+              onClick={() => { onSwitch(t.id); setOpen(false); }}
+              className={`w-full text-left text-xs px-3 py-2 transition-colors truncate
+                ${t.id === currentTenantId
+                  ? 'bg-blue-600/20 text-blue-300'
+                  : 'text-slate-300 hover:bg-slate-700'}`}
+            >
+              {t.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Layout() {
-  const { user, logout, tenantName } = useAuth();
+  const { user, logout, tenantName, tenantId, accessibleTenants, hasModule, switchTenant } = useAuth();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -92,11 +88,22 @@ export default function Layout() {
     navigate('/login');
   };
 
-  const navItems = NAV_BY_ROLE[user?.role] || NAV_BY_ROLE.CLIENT;
+  const handleSwitchTenant = async (tid) => {
+    try {
+      await switchTenant(tid);
+      toast.success('Switched tenant context');
+      navigate('/');
+    } catch {
+      toast.error('Failed to switch tenant');
+    }
+  };
+
+  // Filter nav items dynamically based on user's effective module permissions
+  const navItems = ALL_NAV_ITEMS.filter(item => hasModule(item.module));
 
   const SidebarContent = ({ mobile }) => (
     <div className="flex flex-col h-full" style={{ background: '#0f172a' }}>
-      {/* Logo area */}
+      {/* Logo */}
       <div
         className="flex items-center gap-3 px-5 py-5"
         style={{ background: 'linear-gradient(135deg, #1e3a5f 0%, #0f172a 100%)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}
@@ -115,7 +122,7 @@ export default function Layout() {
         )}
       </div>
 
-      {/* User identity block */}
+      {/* User identity + tenant switcher */}
       <div className="px-4 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-white text-sm font-bold flex-shrink-0">
@@ -134,9 +141,14 @@ export default function Layout() {
             {user?.role === 'SUPER_ADMIN' ? 'Platform Admin' : (tenantName || '')}
           </span>
         </div>
+        <TenantSwitcher
+          accessibleTenants={accessibleTenants}
+          currentTenantId={tenantId}
+          onSwitch={handleSwitchTenant}
+        />
       </div>
 
-      {/* Navigation */}
+      {/* Navigation — fully dynamic from module permissions */}
       <nav className="flex-1 px-3 py-3 overflow-y-auto space-y-0.5">
         <div className="text-xs font-semibold text-slate-600 uppercase tracking-widest px-3 py-2">Menu</div>
         {navItems.map(item => (
@@ -153,7 +165,7 @@ export default function Layout() {
               }`
             }
           >
-            <item.icon className="h-4.5 w-4.5 flex-shrink-0 h-[18px] w-[18px]"/>
+            <item.icon className="h-[18px] w-[18px] flex-shrink-0"/>
             {item.label}
           </NavLink>
         ))}
@@ -198,10 +210,7 @@ export default function Layout() {
           <button onClick={() => setSidebarOpen(true)} className="lg:hidden p-1.5 rounded-lg hover:bg-gray-100 text-gray-500">
             <Bars3Icon className="h-5 w-5"/>
           </button>
-
           <div className="flex-1"/>
-
-          {/* Top-right user avatar */}
           <div className="flex items-center gap-3">
             <div className="text-right hidden sm:block">
               <div className="text-sm font-semibold text-gray-800">{user?.name}</div>

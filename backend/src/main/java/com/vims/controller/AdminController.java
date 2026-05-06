@@ -48,4 +48,43 @@ public class AdminController {
         userService.unlockUser(id);
         return ResponseEntity.ok(ApiResponse.ok("User unlocked", null));
     }
+
+    // ── Multi-tenant access ────────────────────────────────────────────
+
+    @PutMapping("/users/{id}/tenants")
+    public ResponseEntity<ApiResponse<Void>> assignTenants(
+            @PathVariable UUID id,
+            @RequestBody AssignTenantsRequest req) {
+        userService.assignTenants(id, req.getTenantIds());
+        return ResponseEntity.ok(ApiResponse.ok("Tenant access updated", null));
+    }
+
+    // ── Module permissions ─────────────────────────────────────────────
+
+    @GetMapping("/users/{id}/permissions")
+    public ResponseEntity<ApiResponse<List<ModulePermissionDetail>>> getModulePermissions(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.ok(userService.getModulePermissions(id)));
+    }
+
+    @PutMapping("/users/{id}/permissions")
+    public ResponseEntity<ApiResponse<Void>> updateModulePermissions(
+            @PathVariable UUID id,
+            @RequestBody UpdateModulePermissionsRequest req) {
+        userService.updateModulePermissions(id, req.getPermissions());
+        return ResponseEntity.ok(ApiResponse.ok("Permissions updated", null));
+    }
+
+    @DeleteMapping("/users/{id}/permissions/{moduleKey}")
+    public ResponseEntity<ApiResponse<Void>> resetModulePermission(
+            @PathVariable UUID id,
+            @PathVariable String moduleKey) {
+        userService.resetModulePermission(id, moduleKey);
+        return ResponseEntity.ok(ApiResponse.ok("Permission reset to default", null));
+    }
+
+    @DeleteMapping("/users/{id}/permissions")
+    public ResponseEntity<ApiResponse<Void>> resetAllModulePermissions(@PathVariable UUID id) {
+        userService.resetAllModulePermissions(id);
+        return ResponseEntity.ok(ApiResponse.ok("All permissions reset to role defaults", null));
+    }
 }

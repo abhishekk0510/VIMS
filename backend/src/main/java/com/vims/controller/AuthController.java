@@ -10,6 +10,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.UUID;
+
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor
@@ -39,5 +41,12 @@ public class AuthController {
             @Valid @RequestBody ChangePasswordRequest req) {
         authService.changePassword(user.getUsername(), req);
         return ResponseEntity.ok(ApiResponse.ok("Password changed", null));
+    }
+
+    @PostMapping("/switch-tenant/{tenantId}")
+    public ResponseEntity<ApiResponse<AuthResponse>> switchTenant(
+            @AuthenticationPrincipal UserDetails user,
+            @PathVariable UUID tenantId) {
+        return ResponseEntity.ok(ApiResponse.ok(authService.switchTenant(user.getUsername(), tenantId)));
     }
 }

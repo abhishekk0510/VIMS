@@ -31,14 +31,44 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  // Switch active tenant context — issues a new JWT for that tenant
+  const switchTenant = useCallback(async (tenantId) => {
+    const res = await api.post(`/auth/switch-tenant/${tenantId}`);
+    const { accessToken, user: u } = res.data.data;
+    localStorage.setItem('vims_access_token', accessToken);
+    localStorage.setItem('vims_user', JSON.stringify(u));
+    setUser(u);
+    return u;
+  }, []);
+
+  // Check if a module is enabled for the current user
+  const hasModule = useCallback((moduleKey) => {
+    if (!user) return false;
+    if (!user.modules || user.modules.length === 0) return false;
+    return user.modules.includes(moduleKey);
+  }, [user]);
+
+  // Update stored user (e.g. after admin updates permissions)
+  const refreshUser = useCallback((updatedUser) => {
+    localStorage.setItem('vims_user', JSON.stringify(updatedUser));
+    setUser(updatedUser);
+  }, []);
+
   return (
     <AuthContext.Provider value={{
       user,
       loading,
       login,
       logout,
-      tenantId: user?.tenantId ?? null,
+      switchTenant,
+      hasModule,
+      refreshUser,
+      tenantId:   user?.tenantId   ?? null,
       tenantName: user?.tenantName ?? null,
+      accessibleTenants: user?.accessibleTenantIds?.map((id, i) => ({
+        id,
+        name: user.accessibleTenantNames?.[i] ?? id,
+      })) ?? [],
     }}>
       {children}
     </AuthContext.Provider>
